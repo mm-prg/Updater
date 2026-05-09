@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.0.2)
+ * Updater Plugin for FM-DX Webserver (v. 0.0.2a)
  * ************************************************
  */
 
@@ -87,8 +87,9 @@ const fetchGithubApi = (url) => new Promise((resolve, reject) => {
 async function downloadRecursive(owner, repo, branch, remotePath, localBaseDir) {
     const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${remotePath}?ref=${branch}`;
     const items = await fetchGithubApi(apiUrl);
+    let downloadedFiles = [];
 
-    if (!Array.isArray(items)) return;
+    if (!Array.isArray(items)) return downloadedFiles;
 
     for (const item of items) {
         const localPath = path.join(localBaseDir, item.name);
@@ -97,12 +98,15 @@ async function downloadRecursive(owner, repo, branch, remotePath, localBaseDir) 
             // Scarichiamo il file
             await download(item.download_url, localPath);
             logInfo(`[Updater] Downloaded: ${item.path}`);
+            downloadedFiles.push(item.path);
         } else if (item.type === 'dir') {
             // Creiamo la directory e scendiamo ricorsivamente
             if (!fs.existsSync(localPath)) fs.mkdirSync(localPath, { recursive: true });
-            await downloadRecursive(owner, repo, branch, item.path, localPath);
+            const subFiles = await downloadRecursive(owner, repo, branch, item.path, localPath);
+            downloadedFiles = downloadedFiles.concat(subFiles);
         }
     }
+    return downloadedFiles;
 }
 
 /**
@@ -138,13 +142,15 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json(), async (re
     const { pluginName, rawBaseUrl, remoteDescriptorPath, localDescriptorName, frontEndPath, localDir } = req.body;
     try {
         logInfo(`[Updater] Updating plugin: ${pluginName} from ${rawBaseUrl}`);
+        let downloadedList = [];
 
         // 1. Scarica il file descrittore principale in /plugins
         await download(`${rawBaseUrl}/${remoteDescriptorPath}`, path.join(pluginsDir, localDescriptorName));
+        downloadedList.push(remoteDescriptorPath);
 
         // 2. Analisi URL per estrarre Owner, Repo e Branch per le API
         // rawBaseUrl es: https://raw.githubusercontent.com/mm-prg/FavStations/main
-        const repoMatch = rawBaseUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)/);
+        const repoMatch = rawBaseUrl.match(/github(?:usercontent)?\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)/);
         if (repoMatch) {
             const [_, owner, repo, branch] = repoMatch;
             const relativeDir = localDir || (frontEndPath ? path.dirname(frontEndPath) : "");
@@ -155,10 +161,11 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json(), async (re
                 if (!fs.existsSync(localTargetDir)) fs.mkdirSync(localTargetDir, { recursive: true });
                 
                 logInfo(`[Updater] Starting recursive download for ${remoteDirPath}...`);
-                await downloadRecursive(owner, repo, branch, remoteDirPath, localTargetDir);
+                const files = await downloadRecursive(owner, repo, branch, remoteDirPath, localTargetDir);
+                downloadedList = downloadedList.concat(files);
             }
         }
-        res.json({ ok: true });
+        res.json({ ok: true, files: downloadedList });
     } catch (e) {
         logError(`[Updater] Update failed for ${pluginName}:`, e);
         res.status(500).json({ ok: false, error: e.message });

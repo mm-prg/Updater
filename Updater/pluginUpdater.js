@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.0.2)
+ * Updater Plugin for FM-DX Webserver (v. 0.0.2a)
  * ************************************************
  */
 
@@ -250,7 +250,8 @@
                     });
                     const data = await res.json();
                     if (data.ok) {
-                        alert(`${p.name} updated successfully! The page will reload.`);
+                        const fileList = data.files ? `\n\nDownloaded files:\n- ${data.files.join('\n- ')}` : '';
+                        alert(`${p.name} updated successfully!${fileList}\n\nThe page will reload.`);
                         location.reload();
                     } else {
                         alert(`Update failed: ${data.error || 'Unknown error'}`);
@@ -483,8 +484,10 @@
                                 })
                             });
                             
+                            const updateData = await updateRes.json();
                             overlay.remove();
-                            alert(`Plugin "${pluginName}" added and installed successfully!`);
+                            const fileList = updateData.files ? `\n\nDownloaded files:\n- ${updateData.files.join('\n- ')}` : '';
+                            alert(`Plugin "${pluginName}" added and installed successfully!${fileList}`);
                             location.reload();
                         } else {
                             alert("Error saving plugin.");
