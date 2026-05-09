@@ -1,0 +1,74 @@
+{
+  "FavStations": {
+    "repoUrl": "https://github.com/mm-prg/FavStations",
+    "fileUrl": "FavStations.js"
+  },
+  "Autotune": {
+    "repoUrl": "https://github.com/highpoint2000/Autotune",
+    "fileUrl": "Autotune/autotune.js"
+  },
+  "ES Alert": {
+    "repoUrl": "https://github.com/highpoint2000/ES-Alert",
+    "fileUrl": "ES-Alert/es-alert.js"
+  },
+  "AI Denoise": {
+    "repoUrl": "https://github.com/highpoint2000/AI-Denoise",
+    "fileUrl": "AI-Denoise/ai-denoise.js"
+  },
+  "LiveMap": {
+    "repoUrl": "https://github.com/highpoint2000/LiveMap",
+    "fileUrl": "LiveMap/livemap.js"
+  },
+  "RDS AI Decoder": {
+    "repoUrl": "https://github.com/highpoint2000/RDS-AI-Decoder",
+    "fileUrl": "RDS-AI-Decoder/rds-ai-decoder.js"
+  },
+  "Tropo Forecast": {
+    "repoUrl": "https://github.com/Highpoint2000/TropoForecast",
+    "fileUrl": "TropoForecast/TropoForecast.js"
+  },
+  "Stream": {
+    "repoUrl": "https://github.com/highpoint2000/Stream",
+    "fileUrl": "StreamPlugin.js"
+  },
+  "Enhanced Tuning": {
+    "repoUrl": "https://github.com/Overland-DX/Enhanced-Tuning",
+    "fileUrl": "Enhanced_Tuning.js"
+  },
+  "AM-Station-Info": {
+    "repoUrl": "https://github.com/Overland-DX/AM-Station-Info",
+    "fileUrl": "plugins/am-station-info.js"
+  },
+  "Simple Clock Plugin": {
+    "repoUrl": "https://github.com/Overland-DX/simple-utc-clock-plugin",
+    "fileUrl": "Simple_Clock.js"
+  },
+  "Audio recorder": {
+    "repoUrl": "https://github.com/mrwish7/webserver-audio-recorder",
+    "fileUrl": "AudioRecorder.js"
+  },
+  "RDSExpert": {
+    "repoUrl": "https://github.com/LucasGallone/RDSExpert-Plugin",
+    "fileUrl": "RDSExpert-Plugin.js"
+  },
+  "Sysinfo Plugin": {
+    "repoUrl": "https://github.com/Highpoint2000/Sysinfo",
+    "fileUrl": "Sysinfo.js"
+  },
+  "URDS Uploader": {
+    "repoUrl": "https://github.com/Highpoint2000/URDSupload",
+    "fileUrl": "URDS-Uploader.js"
+  },
+  "Screenshot": {
+    "repoUrl": "https://github.com/Highpoint2000/webserver-screenshot",
+    "fileUrl": "ScreenshotPlugin.js"
+  },
+  "Station Logo Plugin": {
+    "repoUrl": "https://github.com/Highpoint2000/webserver-station-logos",
+    "fileUrl": "StationLogo.js"
+  },
+  "Scanner Plugin": {
+    "repoUrl": "https://github.com/Highpoint2000/webserver-scanner",
+    "fileUrl": "plugins/ScannerPlugin.js"
+  }
+}
