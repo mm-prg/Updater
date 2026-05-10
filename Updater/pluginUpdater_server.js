@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.0.2c)
+ * Updater Plugin for FM-DX Webserver (v. 0.0.3)
  * ************************************************
  */
 
@@ -196,6 +196,19 @@ endpointsRouter.post('/plugins/Updater/save-override', express.json(), (req, res
 });
 
 /**
+ * Endpoint per riavviare il server (richiede Restart=always nel file .service)
+ */
+endpointsRouter.post('/plugins/Updater/restart-server', express.json(), (req, res) => {
+    logInfo(`[${pluginName}] Server restart requested via UI...`);
+    res.json({ ok: true, message: "Restarting server..." });
+    
+    // Diamo tempo alla risposta di partire prima di terminare il processo
+    setTimeout(() => {
+        process.exit(0); 
+    }, 1000);
+});
+
+/**
  * Endpoint per eseguire l'aggiornamento di un plugin (scarica i file da GitHub)
  */
 endpointsRouter.post('/plugins/Updater/update-plugin', express.json(), async (req, res) => {
@@ -308,11 +321,12 @@ endpointsRouter.get('/plugins/Updater/list', (req, res) => {
             // Search for .js files acting as descriptors (e.g., FavStations.js, Updater.js)
             if (file.endsWith('.js')) {
                 const filePath = path.join(pluginsDir, file);
-                if (fs.statSync(filePath).isFile()) {
+                // Escludiamo file di sistema o script palesemente solo frontend
+                if (fs.statSync(filePath).isFile() && file !== 'index.js' && !file.includes('.frontend.')) {
                     try {
-//                    logInfo(`[${pluginName}] Reading descriptor: ${file}`);
                         // Clear require cache to read any live changes
-                        delete require.cache[require.resolve(filePath)];
+                        const resolvedPath = require.resolve(filePath);
+                        delete require.cache[resolvedPath];
                         const pluginModule = require(filePath);
                         if (pluginModule && pluginModule.pluginConfig) {
                             const config = pluginModule.pluginConfig;
@@ -335,8 +349,9 @@ endpointsRouter.get('/plugins/Updater/list', (req, res) => {
                             });
 //                            logInfo(`[${pluginName}] Plugin metadata loaded for: ${pluginModule.pluginConfig.name}`);
                         }
-                    } catch (e) {
+                    } catch (err) {
                         // Skip files that are not valid modules or don't contain pluginConfig
+                        // logError(`[${pluginName}] Skipping ${file}: ${err.message}`);
                     }
                 }
             }

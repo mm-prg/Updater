@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.0.2c)
+ * Updater Plugin for FM-DX Webserver (v. 0.0.3)
  * ************************************************
  */
 
@@ -179,6 +179,7 @@
             <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 12px; padding: 0 5px;">
                 <div id="updater-status" style="font-size: 0.9em; color: #00ccff; font-weight: bold;">Scanning files...</div>
                 <button id="add-plugin-btn" style="background: #00ccff; color: #000; border: none; border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 11px; font-weight: bold; width: fit-content; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">Add new plugin</button>
+                <button id="restart-server-btn" style="background: #ffaa00; color: #000; border: none; border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 11px; font-weight: bold; width: fit-content; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">Restart Server</button>
             </div>
             <div style="overflow-x: auto;">
                 <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
@@ -233,6 +234,22 @@
 
         document.getElementById('add-plugin-btn').onclick = () => openAddModal(currentPlugins);
         document.getElementById('updater-options-btn').onclick = () => openOptionsModal();
+        document.getElementById('restart-server-btn').onclick = async () => {
+            if (!confirm("Are you sure you want to restart the webserver? The connection will be lost for a few seconds.")) return;
+            try {
+                const res = await fetch('/plugins/Updater/restart-server', { method: 'POST' });
+                if (res.ok) {
+                    alert("Server is restarting. Please wait a few seconds and reload the page.");
+                    setTimeout(() => location.reload(), 5000);
+                } else {
+                    alert("Failed to request restart.");
+                }
+            } catch (e) {
+                // Spesso fallisce perché il server si chiude subito, lo consideriamo un successo
+                alert("Restart command sent. Reloading...");
+                setTimeout(() => location.reload(), 5000);
+            }
+        };
 
             function createOpenPluginListButton(modalContainer) {
                 const btnId = 'updater-open-btn';
@@ -768,7 +785,7 @@
                 
                 const header = document.createElement('div');
                 header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #ccc; padding-bottom:5px;';
-                header.innerHTML = `<h3 style="margin:0;">Local File: <span style="color:#00ff00;">${fileName}</span></h3>`;
+                header.innerHTML = `<h3 style="margin:0;">Local File: <span class="sc-view-filename" style="color:#00ff00;">${fileName}</span></h3>`;
                 
                 const closeBtn = document.createElement('button');
                 closeBtn.textContent = 'Close';
@@ -778,30 +795,58 @@
                 
                 modal.appendChild(header);
 
+                let pathInfo = null;
                 if (fullPath) {
-                    const pathInfo = document.createElement('div');
+                    pathInfo = document.createElement('div');
                     pathInfo.style.cssText = 'font-size: 11px; color: #777; margin-bottom: 12px; font-family: monospace; word-break: break-all; background: #f4f4f4; padding: 6px 10px; border-left: 3px solid #00ff00;';
                     pathInfo.innerHTML = `<strong>Full Path:</strong> ${fullPath}`;
                     modal.appendChild(pathInfo);
-                }
-
-                if (downloadedFiles && downloadedFiles.length > 0) {
-                    const filesHeader = document.createElement('div');
-                    filesHeader.style.cssText = 'font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #555;';
-                    filesHeader.textContent = 'Downloaded files in last update:';
-                    modal.appendChild(filesHeader);
-                    
-                    const filesList = document.createElement('div');
-                    filesList.style.cssText = 'font-size: 11px; color: #666; background: #f5f5f5; padding: 8px; border-radius: 4px; margin-bottom: 15px; border-left: 3px solid #00ff00; max-height: 100px; overflow-y: auto;';
-                    filesList.innerHTML = `<ul style="margin:0; padding-left:20px;">${downloadedFiles.map(f => `<li>${f}</li>`).join('')}</ul>`;
-                    modal.appendChild(filesList);
                 }
 
                 const codeArea = document.createElement('textarea');
                 codeArea.readOnly = true;
                 codeArea.style.cssText = 'flex-grow:1; width:100%; font-family:monospace; font-size:12px; padding:10px; border:1px solid #ddd; border-radius:4px; white-space:pre; overflow:auto; background:#f9f9f9; resize:none; color:#333;';
                 codeArea.value = content;
-                
+
+                const loadFileContent = async (targetFile) => {
+                    codeArea.value = `Loading ${targetFile}...`;
+                    const nameSpan = header.querySelector('.sc-view-filename');
+                    if (nameSpan) nameSpan.textContent = targetFile;
+                    if (pathInfo) pathInfo.style.display = 'none'; // Nascondiamo il path assoluto per i sottofile
+                    
+                    try {
+                        const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent(targetFile)}`);
+                        if (!res.ok) throw new Error();
+                        codeArea.value = await res.text();
+                    } catch (e) {
+                        codeArea.value = "Error: Could not read the file content.";
+                    }
+                };
+
+                if (downloadedFiles && downloadedFiles.length > 0) {
+                    const filesHeader = document.createElement('div');
+                    filesHeader.style.cssText = 'font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #555;';
+                    filesHeader.textContent = 'Downloaded files in last update (click to view):';
+                    modal.appendChild(filesHeader);
+                    
+                    const filesList = document.createElement('div');
+                    filesList.style.cssText = 'font-size: 11px; color: #666; background: #f5f5f5; padding: 8px; border-radius: 4px; margin-bottom: 15px; border-left: 3px solid #00ff00; max-height: 100px; overflow-y: auto;';
+                    
+                    const ul = document.createElement('ul');
+                    ul.style.cssText = 'margin:0; padding-left:20px;';
+                    downloadedFiles.forEach(f => {
+                        const li = document.createElement('li');
+                        li.textContent = f;
+                        li.style.cssText = 'cursor: pointer; color: #0066cc; text-decoration: underline; margin-bottom: 2px;';
+                        li.onmouseover = () => li.style.color = '#fe0830';
+                        li.onmouseout = () => li.style.color = '#0066cc';
+                        li.onclick = () => loadFileContent(f);
+                        ul.appendChild(li);
+                    });
+                    filesList.appendChild(ul);
+                    modal.appendChild(filesList);
+                }
+
                 modal.appendChild(codeArea);
                 overlay.appendChild(modal);
                 document.body.appendChild(overlay);
