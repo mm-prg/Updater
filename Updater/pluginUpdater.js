@@ -1,15 +1,15 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.0.3)
+ * Updater Plugin for FM-DX Webserver
  * ************************************************
  */
 
 "use strict";
 
 (() => {
+    const pluginVersion = '0.0.4';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
-    const pluginVersion = '0.0.2b';
 
     // Resolve the owner: priority to specific override, then author override, then author, finally default
     function resolveOwner(p, allPlugins) {
