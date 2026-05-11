@@ -7,7 +7,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.0.4';
+    const pluginVersion = '0.0.5';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
 
