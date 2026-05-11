@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.0.3)
+ * Updater Plugin for FM-DX Webserver (v. 0.0.5)
  * ************************************************
  */
 
