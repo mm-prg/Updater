@@ -7,7 +7,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.0.5';
+    const pluginVersion = '0.0.6';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
 
@@ -56,7 +56,7 @@
 
             const filePath = p.fileUrl || p.githubPath || p.fileName || p.frontEndPath;
             
-            // Se filePath è un URL completo (es. pastebin), lo usiamo direttamente
+            // If filePath is a complete URL (e.g., pastebin), we use it directly
             const url = filePath.startsWith('http') ? filePath : `https://raw.githubusercontent.com/${owner}/${repo}/main/${filePath}`;
             
             // rds-ai-decoder.js uses cache: 'no-store' and a timestamp to avoid browser/proxy cache
@@ -72,32 +72,12 @@
         }
     }
 
-    // Check for other files in the same directory as the descriptor on GitHub
-    async function checkExtraFiles(owner, repo, remoteFilePath) {
-        const remoteDirPath = remoteFilePath.includes('/') ? remoteFilePath.substring(0, remoteFilePath.lastIndexOf('/')) : "";
-        try {
-            const apiDirUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${remoteDirPath}?ref=main`;
-            const apiRes = await fetch(apiDirUrl);
-            if (!apiRes.ok) return null;
-            const items = await apiRes.json();
-            if (!Array.isArray(items)) return null;
-
-            const extras = items
-                .filter(item => item.path !== remoteFilePath)
-                .map(item => item.name);
-            
-            return { dir: remoteDirPath || '(root)', files: extras };
-        } catch (e) {
-            return null;
-        }
-    }
-
     async function initUpdater() {
         let currentPlugins = [];
         // Retrieve the last saved sorting state or set the default one
         let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
 
-        // Recupera le impostazioni dal server
+        // Retrieve settings from the server
         let visibility = 'both';
         try {
             const settingsRes = await fetch('/plugins/Updater/settings');
@@ -245,7 +225,7 @@
                     alert("Failed to request restart.");
                 }
             } catch (e) {
-                // Spesso fallisce perché il server si chiude subito, lo consideriamo un successo
+                // Often fails because the server closes immediately, we consider it a success
                 alert("Restart command sent. Reloading...");
                 setTimeout(() => location.reload(), 5000);
             }
@@ -403,16 +383,8 @@
                     if (match) repo = match[2];
                 }
 
-                // Check for extra files in the directory before downloading
                 const remoteDescriptorPath = p.fileUrl || p.githubPath || p.fileName || p.frontEndPath;
                 let skipRecursive = false;
-                const extras = await checkExtraFiles(owner, repo, remoteDescriptorPath);
-                if (extras && extras.files.length > 0) {
-                    const extraMsg = `The directory "${extras.dir}" contains additional files:\n- ${extras.files.join('\n- ')}\n\nDo you want to download these files as well?`;
-                    if (!confirm(extraMsg)) {
-                        skipRecursive = true;
-                    }
-                }
 
                 // Build the GitHub "raw" base URL
                 const rawBaseUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main`;
@@ -421,7 +393,7 @@
                 const statusCell = document.getElementById(statusId);
                 if (statusCell) {
                     statusCell.innerHTML = '<span style="color: #fe0830; font-weight: bold;">Updating...</span>';
-                }
+                } // If the check was successful (version found) and we had no saved parameters,
 
                 try {
                     const res = await fetch('/plugins/Updater/update-plugin', {
@@ -431,7 +403,7 @@
                             pluginName: p.name,
                             rawBaseUrl: rawBaseUrl,
                             remoteDescriptorPath: remoteDescriptorPath,
-                            localDescriptorName: p.fileName,
+                            localDescriptorName: remoteDescriptorPath.split('/').pop(),
                             frontEndPath: p.frontEndPath,
                             localDir: p.localDir,
                             skipRecursive: skipRecursive
@@ -439,20 +411,22 @@
                     });
                     const data = await res.json();
                     if (data.ok) {
-                        if (data.files) {
+                        if (data.files || data.notDownloadedFiles) {
                             try {
                                 await fetch('/plugins/Updater/save-override', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({
                                         pluginName: p.name,
-                                        downloadedFiles: data.files
+                                        downloadedFiles: data.files,
+                                        notDownloadedFiles: data.notDownloadedFiles
                                     })
                                 });
                             } catch (e) {}
                         }
                         const fileList = data.files ? `\n\nDownloaded files:\n- ${data.files.join('\n- ')}` : '';
-                        alert(`${p.name} updated successfully!${fileList}`);
+                        const skipList = data.notDownloadedFiles?.length > 0 ? `\n\nSkipped files (not downloaded):\n- ${data.notDownloadedFiles.join('\n- ')}` : '';
+                        alert(`${p.name} updated successfully!${fileList}${skipList}`);
                         await refreshList();
                     } else {
                         alert(`Update failed: ${data.error || 'Unknown error'}`);
@@ -537,6 +511,10 @@
                     const fileUrl = modal.querySelector('#edit-file-path').value.trim();
                     const localDir = modal.querySelector('#edit-local-dir').value.trim();
                     
+                    if (!repoUrl || !fileUrl || !localDir) {
+                        return alert("All three fields (Repository URL, File Path, and Local Directory) are required.");
+                    }
+
                     try {
                         const res = await fetch('/plugins/Updater/save-override', {
                             method: 'POST',
@@ -554,9 +532,9 @@
                             p.repoUrl = repoUrl || null;
                             p.fileUrl = fileUrl || null;
                             p.localDir = localDir || null;
-                            // Clean old fields if present
+                            // Clean old fields if present // Force re-check
                             delete p.githubOwner; delete p.githubRepo; delete p.githubPath;
-                            delete p.cachedRemoteVer; // Force re-check
+                            delete p.cachedRemoteVer;
                             renderPluginRows();
 
                             // Update all plugins from the same author as they might have inherited the new owner
@@ -585,18 +563,22 @@
                 modal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:400px; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
                 modal.innerHTML = `
                     <h3 style="margin-top:0;">Add New Plugin</h3>
-                    <p style="font-size:12px; color:#666; margin-bottom:15px;">Enter the GitHub repository URL. The system will automatically detect the descriptor file and configuration.</p>
-                    <div style="margin-bottom:20px;">
+                    <p style="font-size:12px; color:#666; margin-bottom:15px;">Enter the plugin details. All three fields are mandatory.</p>
+                    <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">GitHub Repository URL</label>
                         <input type="text" id="add-repo-url" placeholder="https://github.com/mm-prg/FavStations" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
                     </div>
-                    <div style="margin-bottom:20px;">
-                        <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">Descriptor File Path (.js)</label>
+                    <div style="margin-bottom:15px;">
+                        <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">Descriptor File Path (.js) in Repo</label>
                         <input type="text" id="add-file-path" placeholder="e.g. FavStations.js or Folder/Plugin.js" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
+                    </div>
+                    <div style="margin-bottom:15px;">
+                        <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">Local Directory (relative to plugins/)</label>
+                        <input type="text" id="add-local-dir" placeholder="e.g. FavStations" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
                     </div>
                     <div style="display:flex; justify-content:flex-end; gap:10px;">
                         <button id="cancel-add" style="padding:8px 15px; border:none; background:#eee; cursor:pointer; border-radius:4px;">Cancel</button>
-                        <button id="save-add" style="padding:8px 15px; border:none; background:#fe0830; color:#fff; cursor:pointer; border-radius:4px;">Discover & Add</button>
+                        <button id="save-add" style="padding:8px 15px; border:none; background:#fe0830; color:#fff; cursor:pointer; border-radius:4px;">Save & Install</button>
                     </div>
                 `;
 
@@ -607,7 +589,11 @@
                 modal.querySelector('#save-add').onclick = async () => {
                     const repoUrl = modal.querySelector('#add-repo-url').value.trim();
                     const manualFilePath = modal.querySelector('#add-file-path').value.trim();
-                    if (!repoUrl) return alert("Please enter the Repository URL.");
+                    const localDir = modal.querySelector('#add-local-dir').value.trim();
+
+                    if (!repoUrl || !manualFilePath || !localDir) {
+                        return alert("All three fields are required.");
+                    }
 
                     const match = repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)/);
                     if (!match) return alert("Invalid GitHub URL. Use: https://github.com/owner/repository");
@@ -617,58 +603,35 @@
 
                     const saveBtn = modal.querySelector('#save-add');
                     saveBtn.disabled = true;
-                    saveBtn.textContent = "Discovering...";
-
-                    // Heuristics to find the main descriptor file
-                    const guesses = [];
-                    if (manualFilePath) guesses.push(manualFilePath);
-
-                    guesses.push(
-                        `${repo}.js`,
-                        `${repo.replace(/webserver-/g, '')}.js`,
-                        `${repo.split(/[-_]/).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('')}.js`,
-                        `${repo.charAt(0).toUpperCase() + repo.slice(1)}.js`,
-                        `plugins/${repo}.js`
-                    );
+                    saveBtn.textContent = "Verifying...";
 
                     let descriptorText = "";
-                    let foundFileUrl = "";
+                    const foundFileUrl = manualFilePath;
 
-                    for (const g of guesses) {
-                        const testUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/${g}`;
-                        try {
-                            const res = await fetch(testUrl);
-                            if (res.ok) {
-                                descriptorText = await res.text();
-                                foundFileUrl = g;
-                                break;
-                            }
-                        } catch(e) {}
+                    const testUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/${foundFileUrl}`;
+                    try {
+                        const res = await fetch(testUrl);
+                        if (res.ok) {
+                            descriptorText = await res.text();
+                        }
+                    } catch(e) {
+                        console.error("Error fetching descriptor:", e);
                     }
 
                     if (!descriptorText) {
                         saveBtn.disabled = false;
-                        saveBtn.textContent = "Discover & Add";
-                        return alert("Could not find a valid plugin descriptor in the repository. Make sure the repository contains a .js file exporting 'pluginConfig'.");
+                        saveBtn.textContent = "Save & Install";
+                        return alert("Could not find the descriptor file at the specified path in the repository.");
                     }
 
-                    // Check for extra files in the directory
                     let skipRecursive = false;
-                    const extras = await checkExtraFiles(owner, repo, foundFileUrl);
-                    if (extras && extras.files.length > 0) {
-                        const extraMsg = `The directory "${extras.dir}" contains additional files:\n- ${extras.files.join('\n- ')}\n\nDo you want to download these files as well?`;
-                        if (!confirm(extraMsg)) {
-                            skipRecursive = true;
-                        }
-                    }
 
-                    // Extract metadata from the discovered descriptor
+                    // After saving the config, proceed to immediate file download
                     const nameMatch = descriptorText.match(/name\s*:\s*['"]([^'"]+)['"]/);
                     const fePathMatch = descriptorText.match(/frontEndPath\s*:\s*['"]([^'"]+)['"]/);
 
                     const pluginName = nameMatch ? nameMatch[1] : repo;
                     const fePath = fePathMatch ? fePathMatch[1] : "";
-                    const localDir = fePath ? fePath.substring(0, fePath.lastIndexOf('/')).replace(/\\/g, '/') : "";
 
                     try {
                         const res = await fetch('/plugins/Updater/save-override', {
@@ -678,7 +641,7 @@
                                 pluginName: pluginName,
                                 repoUrl: repoUrl,
                                 fileUrl: foundFileUrl,
-                                localDir: localDir || null
+                                localDir: localDir
                             })
                         });
 
@@ -694,25 +657,27 @@
                                     remoteDescriptorPath: foundFileUrl,
                                     localDescriptorName: foundFileUrl.split('/').pop(),
                                     frontEndPath: fePath,
-                                    localDir: localDir || null,
+                                    localDir: localDir,
                                     skipRecursive: skipRecursive
                                 })
                             });
                             
                             const updateData = await updateRes.json();
-                            if (updateData.ok && updateData.files) {
+                            if (updateData.ok && (updateData.files || updateData.notDownloadedFiles)) {
                                 await fetch('/plugins/Updater/save-override', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({
                                         pluginName: pluginName,
-                                        downloadedFiles: updateData.files
+                                        downloadedFiles: updateData.files,
+                                        notDownloadedFiles: updateData.notDownloadedFiles
                                     })
                                 }).catch(() => {});
                             }
                             overlay.remove();
                             const fileList = updateData.files ? `\n\nDownloaded files:\n- ${updateData.files.join('\n- ')}` : '';
-                            alert(`Plugin "${pluginName}" added and installed successfully!${fileList}`);
+                            const skipList = updateData.notDownloadedFiles?.length > 0 ? `\n\nSkipped files (not downloaded):\n- ${updateData.notDownloadedFiles.join('\n- ')}` : '';
+                            alert(`Plugin "${pluginName}" added and installed successfully!${fileList}${skipList}`);
                             await refreshList();
                         } else {
                             alert("Error saving plugin.");
@@ -721,7 +686,7 @@
                         alert("Connection error.");
                     } finally {
                         saveBtn.disabled = false;
-                        saveBtn.textContent = "Discover & Add";
+                        saveBtn.textContent = "Save & Install";
                     }
                 };
             }
@@ -776,7 +741,7 @@
                 };
             }
 
-            function openViewFileModal(fileName, content, downloadedFiles = [], fullPath = '') {
+            function openViewFileModal(fileName, content, downloadedFiles = [], notDownloadedFiles = [], fullPath = '', repoUrl = '') {
                 const overlay = document.createElement('div');
                 overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:100000; display:flex; align-items:center; justify-content:center; color:#000;';
                 
@@ -785,22 +750,32 @@
                 
                 const header = document.createElement('div');
                 header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #ccc; padding-bottom:5px;';
-                header.innerHTML = `<h3 style="margin:0;">Local File: <span class="sc-view-filename" style="color:#00ff00;">${fileName}</span></h3>`;
-                
+
+                header.insertAdjacentHTML('beforeend', `<h3 style="margin:0;">Local File: <span class="sc-view-filename" style="color:#00ff00;">${fileName}</span></h3>`);
+
                 const closeBtn = document.createElement('button');
-                closeBtn.textContent = 'Close';
-                closeBtn.style.cssText = 'background:#eee; border:1px solid #ccc; padding:6px 12px; cursor:pointer; border-radius:4px; font-weight:bold;';
+                closeBtn.textContent = '×';
+                closeBtn.style.cssText = 'background:none; border:none; padding:0; cursor:pointer; font-weight:bold; font-size:24px; line-height:1; width:auto;';
                 closeBtn.onclick = () => overlay.remove();
+
                 header.appendChild(closeBtn);
-                
                 modal.appendChild(header);
 
                 let pathInfo = null;
+                if (repoUrl) {
+                    const repoLinkDiv = document.createElement('div');
+                    repoLinkDiv.style.cssText = 'font-size: 11px; color: #777; margin-bottom: 8px; font-family: monospace; word-break: break-all; background: #f4f4f4; padding: 6px 10px; border-left: 3px solid #00ccff;';
+                    repoLinkDiv.innerHTML = `<strong>Repository:</strong> <a href="${repoUrl}" target="_blank" style="color:#0066cc; text-decoration:underline;">${repoUrl}</a>`;
+                    modal.appendChild(repoLinkDiv);
+                }
+
+                // Calculate the base plugin directory starting from the descriptor path
+                const basePluginsDir = (fullPath && fileName) ? fullPath.substring(0, fullPath.length - fileName.length) : '';
+
                 if (fullPath) {
                     pathInfo = document.createElement('div');
                     pathInfo.style.cssText = 'font-size: 11px; color: #777; margin-bottom: 12px; font-family: monospace; word-break: break-all; background: #f4f4f4; padding: 6px 10px; border-left: 3px solid #00ff00;';
-                    pathInfo.innerHTML = `<strong>Full Path:</strong> ${fullPath}`;
-                    modal.appendChild(pathInfo);
+                    pathInfo.innerHTML = `<strong>Full Path:</strong> <span class="sc-view-fullpath">${fullPath}</span>`;
                 }
 
                 const codeArea = document.createElement('textarea');
@@ -812,7 +787,15 @@
                     codeArea.value = `Loading ${targetFile}...`;
                     const nameSpan = header.querySelector('.sc-view-filename');
                     if (nameSpan) nameSpan.textContent = targetFile;
-                    if (pathInfo) pathInfo.style.display = 'none'; // Nascondiamo il path assoluto per i sottofile
+                    
+                    // Update the full path displayed for the selected subfile
+                    if (pathInfo && basePluginsDir) {
+                        const fullPathSpan = pathInfo.querySelector('.sc-view-fullpath');
+                        if (fullPathSpan) {
+                            const separator = basePluginsDir.includes('\\') ? '\\' : '/';
+                            fullPathSpan.textContent = basePluginsDir + targetFile.replace(/[\/\\]/g, separator);
+                        }
+                    }
                     
                     try {
                         const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent(targetFile)}`);
@@ -845,6 +828,26 @@
                     });
                     filesList.appendChild(ul);
                     modal.appendChild(filesList);
+                }
+
+                if (notDownloadedFiles && notDownloadedFiles.length > 0) {
+                    const skippedHeader = document.createElement('div');
+                    skippedHeader.style.cssText = 'font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #555;';
+                    skippedHeader.textContent = 'Skipped files (not downloaded):';
+                    modal.appendChild(skippedHeader);
+                    
+                    const skippedList = document.createElement('div');
+                    skippedList.style.cssText = 'font-size: 11px; color: #666; background: #fdf6e3; padding: 8px; border-radius: 4px; margin-bottom: 15px; border-left: 3px solid #ffaa00; max-height: 80px; overflow-y: auto;';
+                    
+                    const ul = document.createElement('ul');
+                    ul.style.cssText = 'margin:0; padding-left:20px;';
+                    notDownloadedFiles.forEach(f => {
+                        const li = document.createElement('li');
+                        li.textContent = f;
+                        ul.appendChild(li);
+                    });
+                    skippedList.appendChild(ul);
+                    modal.appendChild(skippedList);
                 }
 
                 modal.appendChild(codeArea);
@@ -887,7 +890,7 @@
                             const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent(p.fileName)}`);
                             if (!res.ok) throw new Error('File read failed');
                             const content = await res.text();
-                            openViewFileModal(p.fileName, content, p.downloadedFiles, p.fullPath);
+                            openViewFileModal(p.fileName, content, p.downloadedFiles, p.notDownloadedFiles, p.fullPath, p.repoUrl);
                         } catch (e) {
                             alert("Error: Could not read the local descriptor file.");
                         }
@@ -922,7 +925,7 @@
             currentPlugins.sort((a, b) => {
                 let cmp = 0;
                 if (key === 'status') {
-                    // Define a rank for the status: 1: Update, 2: OK, 3: Error/Not found, 4: In progress
+                    // Define a rank for the status: 1: Update, 2: OK, 3: Error/Not found, 4: In progress // If they have the same rank, sort by name
                     const getRank = (p) => {
                         if (p.cachedRemoteVer === undefined) return 4;
                         if (p.cachedRemoteVer === null) return 3;
@@ -930,7 +933,7 @@
                         return 2;
                     };
                     const rankA = getRank(a);
-                    const rankB = getRank(b);
+                    const rankB = getRank(b); // Store key and direction in the browser
                     cmp = rankA - rankB;
                     // If they have the same rank, sort by name
                     if (cmp === 0) cmp = (a.name || '').localeCompare(b.name || '');
