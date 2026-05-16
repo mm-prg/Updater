@@ -7,7 +7,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.0.6';
+    const pluginVersion = '0.0.7';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
 
@@ -78,12 +78,18 @@
         let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
 
         // Retrieve settings from the server
-        let visibility = 'both';
+        let settings = { showInPluginPanel: true, showInHeader: true, showInSetup: true };
         try {
             const settingsRes = await fetch('/plugins/Updater/settings');
             if (settingsRes.ok) {
-                const settings = await settingsRes.json();
-                visibility = settings.visibility || 'both';
+                const data = await settingsRes.json();
+                // Migrazione o caricamento nuovi parametri
+                if (data.showInPluginPanel !== undefined) {
+                    settings = data;
+                } else if (data.visibility) {
+                    settings.showInSetup = (data.visibility === 'both' || data.visibility === 'setup');
+                    settings.showInPluginPanel = settings.showInHeader = (data.visibility === 'both' || data.visibility === 'main');
+                }
             }
         } catch (e) {}
 
@@ -100,11 +106,12 @@
         // 2. We are on the main page AND the user is an administrator (to show the button)
 
         // Respect visibility settings
-        if (visibility === 'setup' && !isOnSetupPage) return;
-        if (visibility === 'main' && !isMainPage) return;
+        if (isOnSetupPage && !settings.showInSetup) return;
+        if (isMainPage && !settings.showInPluginPanel && !settings.showInHeader) return;
 
         if (!isOnSetupPage && !(isMainPage && isAdmin)) return;
 
+        console.log(`[Updater] Initializing. Admin: ${isAdmin}, SetupPage: ${isOnSetupPage}`, settings);
 
         if (document.getElementById(pluginId)) return;
 
@@ -159,7 +166,6 @@
             <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 12px; padding: 0 5px;">
                 <div id="updater-status" style="font-size: 0.9em; color: #00ccff; font-weight: bold;">Scanning files...</div>
                 <button id="add-plugin-btn" style="background: #00ccff; color: #000; border: none; border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 11px; font-weight: bold; width: fit-content; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">Add new plugin</button>
-                <button id="restart-server-btn" style="background: #ffaa00; color: #000; border: none; border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 11px; font-weight: bold; width: fit-content; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">Restart Server</button>
             </div>
             <div style="overflow-x: auto;">
                 <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
@@ -208,29 +214,13 @@
         // Create the button to open the plugin list on the main page
         // This button is created only if we are not on the setup page.
         if (!isOnSetupPage) {
-            createOpenPluginListButton(container);
+            if (settings.showInPluginPanel) createOpenPluginListButton(container);
+            if (settings.showInHeader) createHeaderButton(container);
         }
 
 
         document.getElementById('add-plugin-btn').onclick = () => openAddModal(currentPlugins);
-        document.getElementById('updater-options-btn').onclick = () => openOptionsModal();
-        document.getElementById('restart-server-btn').onclick = async () => {
-            if (!confirm("Are you sure you want to restart the webserver? The connection will be lost for a few seconds.")) return;
-            try {
-                const res = await fetch('/plugins/Updater/restart-server', { method: 'POST' });
-                if (res.ok) {
-                    alert("Server is restarting. Please wait a few seconds and reload the page.");
-                    setTimeout(() => location.reload(), 5000);
-                } else {
-                    alert("Failed to request restart.");
-                }
-            } catch (e) {
-                // Often fails because the server closes immediately, we consider it a success
-                alert("Restart command sent. Reloading...");
-                setTimeout(() => location.reload(), 5000);
-            }
-        };
-
+        document.getElementById('updater-options-btn').onclick = (event) => toggleOptionsDropdown(event);
             function createOpenPluginListButton(modalContainer) {
                 const btnId = 'updater-open-btn';
                 const overlay = document.getElementById(`${pluginId}-overlay`);
@@ -260,6 +250,67 @@
                 };
                 tryAdd();
             }
+
+        function createHeaderButton(modalContainer) {
+            const tryAddHeader = (attempts = 0) => {
+                // Se siamo nella pagina di setup, non cerchiamo il pulsante nell'header
+                if (window.location.pathname.includes('/setup')) return;
+
+                if (document.getElementById('updater-header-btn')) return;
+
+                // Seguendo la logica di Simple_Clock: puntiamo al container reale della barra superiore
+                const headerContainer = document.querySelector(".dashboard-panel .panel-100-real");
+                
+                if (!headerContainer) {
+                    if (attempts < 40) {
+                        if (attempts % 10 === 0) console.log(`[Updater] Attesa caricamento header container... (tentativo ${attempts})`);
+                        setTimeout(() => tryAddHeader(attempts + 1), 500);
+                    }
+                    return;
+                }
+
+                // Cerchiamo il pulsante menu SOLO dentro il container della barra superiore
+                let menuButton = headerContainer.querySelector("#menuButton") || headerContainer.querySelector("#setupButton");
+                
+                if (!menuButton) {
+                    menuButton = [...headerContainer.querySelectorAll(".headerButton, div")]
+                        .find(el => el.textContent.trim() === "☰" || el.innerHTML.includes('fa-bars') || el.innerHTML.includes('fa-gear'));
+                }
+
+                if (!menuButton) {
+                    // Se ancora non c'è, riprova (magari i pulsanti interni caricano dopo il container)
+                    setTimeout(() => tryAddHeader(attempts + 1), 500);
+                    return;
+                }
+
+                console.log(`[Updater] Anchor trovato (${menuButton.id || 'per contenuto'}). Iniezione pulsante...`);
+                const headerBtn = document.createElement("div");
+                headerBtn.id = "updater-header-btn";
+                // Utilizza solo la classe standard 'headerButton' per evitare di ereditare stili indesiderati
+                headerBtn.className = "headerButton"; 
+                headerBtn.innerHTML = '<i class="fa-solid fa-cloud-arrow-down"></i>';
+                headerBtn.title = "Updater " + pluginVersion;
+                headerBtn.style.cursor = "pointer";
+                // Aggiungi stili di base per garantire la visibilità e l'allineamento
+                headerBtn.style.display = "flex";
+                headerBtn.style.alignItems = "center";
+                headerBtn.style.justifyContent = "center";
+                headerBtn.style.padding = "6px";
+                headerBtn.style.fontSize = "18px"; // Regola la dimensione del font se necessario
+                headerBtn.style.color = "var(--color-4, #E6C269)"; // Usa un colore del tema per coerenza
+
+                menuButton.insertAdjacentElement("beforebegin", headerBtn);
+                console.log("[Updater] Header button inserted successfully.");
+
+                headerBtn.onclick = () => {
+                    const overlay = document.getElementById(`${pluginId}-overlay`);
+                    const isVisible = modalContainer.style.display === 'block';
+                    modalContainer.style.display = isVisible ? 'none' : 'block';
+                    if (overlay) overlay.style.display = isVisible ? 'none' : 'block';
+                };
+            };
+            tryAddHeader();
+        }
 
             function updateStatusCell(p, remoteVer, allPlugins) {
                 const statusId = `status-${p.name.replace(/\s+/g, '_')}`;
@@ -372,10 +423,12 @@
             }
 
             async function performUpdate(p) {
+                // Determine if this is a standard version upgrade or a forced reinstallation
                 const isUpdate = isNewer(p.version || "0.0.0", p.cachedRemoteVer);
                 const msg = isUpdate ? `Update ${p.name} to version ${p.cachedRemoteVer}?` : `Reinstall ${p.name} version ${p.version}?`;
                 if (!confirm(msg)) return;
 
+                // Resolve the repository owner and name from the plugin's metadata or URL
                 const owner = resolveOwner(p, currentPlugins);
                 let repo = p.name.replace(/\s+/g, '-');
                 if (p.repoUrl) {
@@ -383,19 +436,22 @@
                     if (match) repo = match[2];
                 }
 
+                // Identify the remote descriptor path and set up the base URL for raw GitHub content
                 const remoteDescriptorPath = p.fileUrl || p.githubPath || p.fileName || p.frontEndPath;
                 let skipRecursive = false;
 
                 // Build the GitHub "raw" base URL
                 const rawBaseUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main`;
 
+                // Provide immediate visual feedback in the status cell
                 const statusId = `status-${p.name.replace(/\s+/g, '_')}`;
                 const statusCell = document.getElementById(statusId);
                 if (statusCell) {
                     statusCell.innerHTML = '<span style="color: #fe0830; font-weight: bold;">Updating...</span>';
-                } // If the check was successful (version found) and we had no saved parameters,
+                }
 
                 try {
+                    // Call the backend endpoint to perform the actual file download and replacement
                     const res = await fetch('/plugins/Updater/update-plugin', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -411,6 +467,7 @@
                     });
                     const data = await res.json();
                     if (data.ok) {
+                        // If the update succeeded, save the list of modified files to the local configuration
                         if (data.files || data.notDownloadedFiles) {
                             try {
                                 await fetch('/plugins/Updater/save-override', {
@@ -424,27 +481,35 @@
                                 });
                             } catch (e) {}
                         }
+                        // Construct a detailed summary message for the user
                         const fileList = data.files ? `\n\nDownloaded files:\n- ${data.files.join('\n- ')}` : '';
                         const skipList = data.notDownloadedFiles?.length > 0 ? `\n\nSkipped files (not downloaded):\n- ${data.notDownloadedFiles.join('\n- ')}` : '';
-                        alert(`${p.name} updated successfully!${fileList}${skipList}`);
+                        const postUpdateMsg = "\n\nAfter the plugin update, you must:\n1) Clear the browser cache;\n2) Restart the server, if necessary.";
+                        alert(`${p.name} updated successfully!${postUpdateMsg}${fileList}${skipList}`);
                         await refreshList();
                     } else {
+                        // Notify user of server-side failure and restore previous status
                         alert(`Update failed: ${data.error || 'Unknown error'}`);
                         if (statusCell) updateStatusCell(p, p.cachedRemoteVer, currentPlugins);
                     }
                 } catch (e) {
+                    // Handle network or connection errors
                     alert("Connection error during update.");
                     if (statusCell) updateStatusCell(p, p.cachedRemoteVer, currentPlugins);
                 }
             }
 
             async function performDelete(p) {
+                // Construct the confirmation message with details about what will be removed
                 let confirmMsg = `Are you sure you want to delete the plugin "${p.name}"?\n\nThis will remove:\n- The descriptor file: ${p.fileName}\n- The local directory: ${p.localDir || '(none)'}\n\nTHIS ACTION CANNOT BE UNDONE.`;
+                
+                // Add a critical warning if the user is trying to delete the Updater plugin itself
                 if (p.name === 'Updater') {
                     confirmMsg += `\n\n⚠️ CRITICAL WARNING: You are about to delete the UPDATER plugin itself. This will remove this management interface and the ability to update other plugins!`;
                 }
                 if (!confirm(confirmMsg)) return;
 
+                // Update the UI status cell to indicate the deletion process has started
                 const statusId = `status-${p.name.replace(/\s+/g, '_')}`;
                 const statusCell = document.getElementById(statusId);
                 if (statusCell) {
@@ -452,6 +517,7 @@
                 }
 
                 try {
+                    // Send the deletion request to the backend
                     const res = await fetch('/plugins/Updater/delete-plugin', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -463,13 +529,16 @@
                     });
                     const data = await res.json();
                     if (data.ok) {
+                        // Notify success and refresh the plugin list to reflect changes
                         alert(`${p.name} has been deleted.`);
                         await refreshList();
                     } else {
+                        // Handle server-side errors and revert the status cell UI
                         alert(`Deletion failed: ${data.error || 'Unknown error'}`);
                         if (statusCell) updateStatusCell(p, p.cachedRemoteVer, currentPlugins);
                     }
                 } catch (e) {
+                    // Handle network or connection issues
                     alert("Connection error during deletion.");
                     if (statusCell) updateStatusCell(p, p.cachedRemoteVer, currentPlugins);
                 }
@@ -480,13 +549,13 @@
                 overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:100000; display:flex; align-items:center; justify-content:center; color:#000;';
                 
                 const modal = document.createElement('div');
-                modal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:400px; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
+                modal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:450px; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
                 modal.innerHTML = `
                     <h3 style="margin-top:0;">Edit GitHub Data for <b>${p.name}</b></h3>
-                    <p style="font-size:12px; color:#666;">Paste the main repository URL (e.g. https://github.com/${resolveOwner(p, allPlugins)}/${p.name.replace(/\s+/g, '-')}).</p>
+                    <p style="font-size:12px; color:#666; margin-bottom:15px;">Enter the GitHub URL and click Verify to auto-fill details.</p>
                     <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:12px; font-weight:bold;">GitHub Repository URL</label>
-                        <input type="text" id="edit-repo-url" value="${p.repoUrl || (p.githubOwner && p.githubRepo ? `https://github.com/${p.githubOwner}/${p.githubRepo}` : '')}" placeholder="https://github.com/${resolveOwner(p, allPlugins)}/${p.name.replace(/\s+/g, '-')}" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
+                        <div style="display:flex; gap:5px;"><input type="text" id="edit-repo-url" value="${p.repoUrl || (p.githubOwner && p.githubRepo ? `https://github.com/${p.githubOwner}/${p.githubRepo}` : '')}" placeholder="https://github.com/${resolveOwner(p, allPlugins)}/${p.name.replace(/\s+/g, '-')}" style="flex-grow:1; min-width:0; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;"><button id="verify-repo-btn" style="width:34px; height:34px; background:#00ccff; border:none; border-radius:4px; cursor:pointer; font-size:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center;" title="Verify repository contents"><i class="fa-solid fa-magnifying-glass"></i></button></div>
                     </div>
                     <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:12px; font-weight:bold;">Descriptive File Path / URL (.js)</label>
@@ -504,6 +573,63 @@
 
                 overlay.appendChild(modal);
                 document.body.appendChild(overlay);
+
+                // Automatically detect plugin info when the "Verify" button is clicked
+                modal.querySelector('#verify-repo-btn').onclick = async () => {
+                    const repoUrl = modal.querySelector('#edit-repo-url').value.trim();
+                    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)/);
+                    if (!match) return alert("Please enter a valid GitHub URL first.");
+
+                    const owner = match[1];
+                    const repo = match[2];
+                    const verifyBtn = modal.querySelector('#verify-repo-btn');
+                    const originalHtml = verifyBtn.innerHTML;
+                    
+                    verifyBtn.disabled = true;
+                    verifyBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+
+                    try {
+                        // Step 1: Check root contents to see if a 'plugins' folder exists
+                        let contentsUrl = `https://api.github.com/repos/${owner}/${repo}/contents/`;
+                        let res = await fetch(contentsUrl);
+                        if (!res.ok) throw new Error("Repository not found or API limit reached.");
+                        let files = await res.json();
+
+                        // Determine if we should look in the root or in a 'plugins' subdirectory
+                        const pluginsDirItem = files.find(f => f.name.toLowerCase() === 'plugins' && f.type === 'dir');
+                        
+                        if (pluginsDirItem) {
+                            // Scenario: Repository has a 'plugins/' folder containing the descriptor and files
+                            res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/plugins`);
+                            if (res.ok) {
+                                files = await res.json();
+                            }
+                        }
+
+                        // Step 2: Search for .js files in the identified directory that might be descriptors
+                        const jsFiles = files.filter(f => f.name.endsWith('.js') && f.name !== 'index.js' && !f.name.includes('.frontend.'));
+                        let found = false;
+
+                        for (const file of jsFiles) {
+                            const rawRes = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/main/${file.path}`);
+                            if (rawRes.ok) {
+                                const text = await rawRes.text();
+                                // A descriptor must contain the 'pluginConfig' variable
+                                if (text.includes('pluginConfig')) {
+                                    modal.querySelector('#edit-file-path').value = file.path;
+                                    const feMatch = text.match(/frontEndPath\s*:\s*['"]([^'"]+)['"]/);
+                                    modal.querySelector('#edit-local-dir').value = (feMatch && feMatch[1].includes('/')) ? feMatch[1].split('/')[0] : "";
+                                    found = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!found) alert("Could not automatically find a plugin descriptor. Please fill the fields manually.");
+                    } catch (e) { alert(e.message); } finally {
+                        verifyBtn.disabled = false;
+                        verifyBtn.innerHTML = originalHtml;
+                    }
+                };
 
                 modal.querySelector('#cancel-edit').onclick = () => overlay.remove();
                 modal.querySelector('#save-edit').onclick = async () => {
@@ -556,17 +682,19 @@
             }
 
             function openAddModal(allPlugins) {
+                // Create a modal overlay to block interaction with the background
                 const overlay = document.createElement('div');
                 overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:100000; display:flex; align-items:center; justify-content:center; color:#000;';
                 
+                // Build the modal container with input fields for GitHub and local info
                 const modal = document.createElement('div');
-                modal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:400px; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
+                modal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:450px; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
                 modal.innerHTML = `
                     <h3 style="margin-top:0;">Add New Plugin</h3>
-                    <p style="font-size:12px; color:#666; margin-bottom:15px;">Enter the plugin details. All three fields are mandatory.</p>
+                    <p style="font-size:12px; color:#666; margin-bottom:15px;">Enter the GitHub URL and click Verify to auto-fill details.</p>
                     <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">GitHub Repository URL</label>
-                        <input type="text" id="add-repo-url" placeholder="https://github.com/mm-prg/FavStations" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
+                        <div style="display:flex; gap:5px;"><input type="text" id="add-repo-url" placeholder="https://github.com/mm-prg/FavStations" style="flex-grow:1; min-width:0; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;"><button id="verify-repo-btn" style="width:34px; height:34px; background:#00ccff; border:none; border-radius:4px; cursor:pointer; font-size:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center;" title="Verify repository contents"><i class="fa-solid fa-magnifying-glass"></i></button></div>
                     </div>
                     <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">Descriptor File Path (.js) in Repo</label>
@@ -585,12 +713,78 @@
                 overlay.appendChild(modal);
                 document.body.appendChild(overlay);
 
+                // Automatically detect plugin info when the "Verify" button is clicked
+                modal.querySelector('#verify-repo-btn').onclick = async () => {
+                    const repoUrl = modal.querySelector('#add-repo-url').value.trim();
+                    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)/);
+                    if (!match) return alert("Please enter a valid GitHub URL first.");
+
+                    const owner = match[1];
+                    const repo = match[2];
+                    const verifyBtn = modal.querySelector('#verify-repo-btn');
+                    const originalHtml = verifyBtn.innerHTML;
+                    
+                    verifyBtn.disabled = true;
+                    verifyBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+
+                    try {
+                        // Step 1: Check root contents to see if a 'plugins' folder exists
+                        let contentsUrl = `https://api.github.com/repos/${owner}/${repo}/contents/`;
+                        let res = await fetch(contentsUrl);
+                        if (!res.ok) throw new Error("Repository not found or API limit reached.");
+                        let files = await res.json();
+
+                        // Determine if we should look in the root or in a 'plugins' subdirectory
+                        const pluginsDirItem = files.find(f => f.name.toLowerCase() === 'plugins' && f.type === 'dir');
+                        
+                        if (pluginsDirItem) {
+                            // Scenario: Repository has a 'plugins/' folder containing the descriptor and files
+                            res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/plugins`);
+                            if (res.ok) {
+                                files = await res.json();
+                            }
+                        }
+
+                        // Step 2: Search for .js files in the identified directory that might be descriptors
+                        const jsFiles = files.filter(f => f.name.endsWith('.js') && f.name !== 'index.js' && !f.name.includes('.frontend.'));
+                        let found = false;
+
+                        for (const file of jsFiles) {
+                            const rawRes = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/main/${file.path}`);
+                            if (rawRes.ok) {
+                                const text = await rawRes.text();
+                                // A descriptor must contain the 'pluginConfig' variable
+                                if (text.includes('pluginConfig')) {
+                                    modal.querySelector('#add-file-path').value = file.path;
+                                    
+                                    // Attempt to guess the local directory by reading the frontEndPath metadata
+                                    const feMatch = text.match(/frontEndPath\s*:\s*['"]([^'"]+)['"]/);
+                                    if (feMatch && feMatch[1].includes('/')) {
+                                        modal.querySelector('#add-local-dir').value = feMatch[1].split('/')[0];
+                                    } else {
+                                        modal.querySelector('#add-local-dir').value = ""; // Descriptor and files are in root
+                                    }
+                                    found = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!found) alert("Could not automatically find a plugin descriptor. Please fill the fields manually.");
+                    } catch (e) { alert(e.message); } finally {
+                        verifyBtn.disabled = false;
+                        verifyBtn.innerHTML = originalHtml;
+                    }
+                };
+
                 modal.querySelector('#cancel-add').onclick = () => overlay.remove();
+                
+                // Handle the Save & Install action
                 modal.querySelector('#save-add').onclick = async () => {
                     const repoUrl = modal.querySelector('#add-repo-url').value.trim();
                     const manualFilePath = modal.querySelector('#add-file-path').value.trim();
                     const localDir = modal.querySelector('#add-local-dir').value.trim();
 
+                    // Basic validation to ensure all required fields are populated
                     if (!repoUrl || !manualFilePath || !localDir) {
                         return alert("All three fields are required.");
                     }
@@ -605,6 +799,7 @@
                     saveBtn.disabled = true;
                     saveBtn.textContent = "Verifying...";
 
+                    // Verify the existence of the plugin descriptor file on GitHub before proceeding
                     let descriptorText = "";
                     const foundFileUrl = manualFilePath;
 
@@ -626,7 +821,7 @@
 
                     let skipRecursive = false;
 
-                    // After saving the config, proceed to immediate file download
+                    // Extract metadata (name and frontend path) directly from the descriptor source code
                     const nameMatch = descriptorText.match(/name\s*:\s*['"]([^'"]+)['"]/);
                     const fePathMatch = descriptorText.match(/frontEndPath\s*:\s*['"]([^'"]+)['"]/);
 
@@ -634,6 +829,7 @@
                     const fePath = fePathMatch ? fePathMatch[1] : "";
 
                     try {
+                        // Step 1: Save the plugin configuration/overrides to the server
                         const res = await fetch('/plugins/Updater/save-override', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -646,7 +842,7 @@
                         });
 
                         if (res.ok) {
-                            // After saving the config, proceed to immediate file download
+                            // Step 2: Trigger the actual file download and installation process
                             saveBtn.textContent = "Downloading files...";
                             const updateRes = await fetch('/plugins/Updater/update-plugin', {
                                 method: 'POST',
@@ -664,6 +860,7 @@
                             
                             const updateData = await updateRes.json();
                             if (updateData.ok && (updateData.files || updateData.notDownloadedFiles)) {
+                                // Step 3: Record the list of downloaded files for future management/viewing
                                 await fetch('/plugins/Updater/save-override', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
@@ -674,10 +871,13 @@
                                     })
                                 }).catch(() => {});
                             }
+
+                            // Success: close modal, show summary, and refresh the plugin list
                             overlay.remove();
                             const fileList = updateData.files ? `\n\nDownloaded files:\n- ${updateData.files.join('\n- ')}` : '';
                             const skipList = updateData.notDownloadedFiles?.length > 0 ? `\n\nSkipped files (not downloaded):\n- ${updateData.notDownloadedFiles.join('\n- ')}` : '';
-                            alert(`Plugin "${pluginName}" added and installed successfully!${fileList}${skipList}`);
+                            const postInstallMsg = "\n\nAfter loading a new plugin, you must also:\n1) In the fm-dx-webserver setup plugins page, activate the plugin;\n2) Save the new configuration;\n3) Clear the browser cache;\n4) Restart the server, if necessary.";
+                            alert(`Plugin "${pluginName}" added and installed successfully!${postInstallMsg}${fileList}${skipList}`);
                             await refreshList();
                         } else {
                             alert("Error saving plugin.");
@@ -691,57 +891,112 @@
                 };
             }
 
-            async function openOptionsModal() {
-                let currentVisibility = 'both';
+            async function toggleOptionsDropdown(event) {
+                const existing = document.getElementById('updater-options-dropdown');
+                if (existing) {
+                    existing.remove();
+                    return;
+                }
+                event.stopPropagation();
+                const btn = event.currentTarget;
+                const rect = btn.getBoundingClientRect();
+                let currentSettings = { showInPluginPanel: true, showInHeader: true, showInSetup: true };
                 try {
                     const res = await fetch('/plugins/Updater/settings');
                     if (res.ok) {
                         const data = await res.json();
-                        currentVisibility = data.visibility || 'both';
+                        if (data.showInPluginPanel !== undefined) currentSettings = data;
                     }
                 } catch (e) {}
-
-                const overlay = document.createElement('div');
-                overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:100001; display:flex; align-items:center; justify-content:center; color:#000;';
-                
-                const modal = document.createElement('div');
-                modal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:320px; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
-                modal.innerHTML = `
-                    <h3 style="margin-top:0; font-size: 16px;">Updater Options</h3>
-                    <p style="font-size:12px; color:#666; margin-bottom:15px;">Choose where to display the Plugin Inventory:</p>
-                    <div style="margin-bottom:20px;">
-                        <label style="display:block; margin-bottom:8px; font-size:13px; cursor:pointer;"><input type="radio" name="updater-vis" value="both" ${currentVisibility === 'both' ? 'checked' : ''}> Both (Setup & Main Page)</label>
-                        <label style="display:block; margin-bottom:8px; font-size:13px; cursor:pointer;"><input type="radio" name="updater-vis" value="setup" ${currentVisibility === 'setup' ? 'checked' : ''}> Setup Page Only</label>
-                        <label style="display:block; margin-bottom:8px; font-size:13px; cursor:pointer;"><input type="radio" name="updater-vis" value="main" ${currentVisibility === 'main' ? 'checked' : ''}> Main Page Only</label>
+                const dropdown = document.createElement('div');
+                dropdown.id = 'updater-options-dropdown';
+                dropdown.style.cssText = `position:fixed; top:${rect.bottom + 5}px; left:${rect.left}px; background:#1a1a1a; border:1px solid #444; border-radius:4px; padding:12px; z-index:100002; width:260px; box-shadow:0 4px 20px rgba(0,0,0,0.8); color:#fff; font-size:13px;`;
+                dropdown.innerHTML = `
+                    <div style="margin-bottom:12px; border-bottom:1px solid #333; padding-bottom:8px; font-weight:bold; color:#00ff00; font-size:11px; text-transform:uppercase;">Visibility</div>
+                    <div style="margin-bottom:15px;">
+                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="opt-show-panel" ${currentSettings.showInPluginPanel ? 'checked' : ''}> Plugin Panel</label>
+                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="opt-show-header" ${currentSettings.showInHeader ? 'checked' : ''}> Header Button</label>
+                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="opt-show-setup" ${currentSettings.showInSetup ? 'checked' : ''}> Setup Table</label>
                     </div>
-                    <div style="display:flex; justify-content:flex-end; gap:10px;">
-                        <button id="opt-cancel" style="padding:6px 12px; border:none; background:#eee; cursor:pointer; border-radius:4px; font-size:12px;">Cancel</button>
-                        <button id="opt-save" style="padding:6px 12px; border:none; background:#fe0830; color:#fff; cursor:pointer; border-radius:4px; font-size:12px;">Save</button>
+                    <button id="opt-save" style="width:100%; padding:6px; border:none; background:#fe0830; color:#fff; cursor:pointer; border-radius:4px; font-size:11px; font-weight:bold; margin-bottom:15px;">SAVE SETTINGS</button>
+                    <div style="border-top:1px solid #333; padding-top:12px;">
+                        <div style="margin-bottom:8px; font-weight:bold; color:#00ccff; font-size:11px; text-transform:uppercase;">Internal Files</div>
+                        <button id="view-new-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-file-code"></i> new_data.json</button>
+                        <button id="view-pl-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-file-lines"></i> pl_data.json</button>
+                    </div>
+                    <div style="border-top:1px solid #333; padding-top:12px; margin-top:12px;">
+                        <div style="margin-bottom:8px; font-weight:bold; color:#ffaa00; font-size:11px; text-transform:uppercase;">Maintenance</div>
+                        <button id="commit-overrides-btn" title="Merge new_data into pl_data and clear new_data" style="background:#333; color:#ffaa00; border:1px solid #ffaa00; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; font-weight:bold;">MERGE NEW DATA</button>
                     </div>
                 `;
-                overlay.appendChild(modal);
-                document.body.appendChild(overlay);
-
-                modal.querySelector('#opt-cancel').onclick = () => overlay.remove();
-                modal.querySelector('#opt-save').onclick = async () => {
-                    const selected = modal.querySelector('input[name="updater-vis"]:checked').value;
-                    
+                document.body.appendChild(dropdown);
+                const dRect = dropdown.getBoundingClientRect();
+                if (dRect.right > window.innerWidth) dropdown.style.left = (window.innerWidth - dRect.width - 10) + 'px';
+                const closeDropdown = (e) => {
+                    if (!dropdown.contains(e.target) && e.target !== btn) {
+                        dropdown.remove();
+                        document.removeEventListener('click', closeDropdown);
+                    }
+                };
+                setTimeout(() => document.addEventListener('click', closeDropdown), 0);
+                dropdown.querySelector('#opt-save').onclick = async () => {
+                    const newSettings = {
+                        showInPluginPanel: dropdown.querySelector('#opt-show-panel').checked,
+                        showInHeader: dropdown.querySelector('#opt-show-header').checked,
+                        showInSetup: dropdown.querySelector('#opt-show-setup').checked
+                    };
                     try {
                         const res = await fetch('/plugins/Updater/settings', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ visibility: selected })
+                            body: JSON.stringify(newSettings)
                         });
                         if (res.ok) {
-                            overlay.remove();
-                            alert("Visibility preference saved. Reloading page...");
+                            dropdown.remove();
+                            alert("Settings saved. Reloading...");
                             location.reload();
                         }
                     } catch (e) { alert("Error saving settings."); }
                 };
+                dropdown.querySelector('#commit-overrides-btn').onclick = async () => {
+                    if (!confirm("Are you sure you want to merge all changes from new_data.json into pl_data.json?\n\nThis will update existing entries and add new ones, then clear new_data.json.")) return;
+                    try {
+                        const res = await fetch('/plugins/Updater/commit-overrides', { method: 'POST' });
+                        if (res.ok) {
+                            dropdown.remove();
+                            alert("Data merged successfully. Reloading...");
+                            location.reload();
+                        } else {
+                            const err = await res.json();
+                            alert("Error: " + (err.error || "Failed to merge data."));
+                        }
+                    } catch (e) { alert("Connection error."); }
+                };
+                dropdown.querySelector('#view-new-data-btn').onclick = async () => {
+                    try {
+                        const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent('Updater/new_data.json')}`);
+                        if (!res.ok) throw new Error();
+                        openViewFileModal('new_data.json', await res.text());
+                        dropdown.remove();
+                    } catch (e) { alert("Error reading file."); }
+                };
+                dropdown.querySelector('#view-pl-data-btn').onclick = async () => {
+                    try {
+                        const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent('Updater/pl_data.json')}`);
+                        if (!res.ok) throw new Error();
+                        openViewFileModal('pl_data.json', await res.text());
+                        dropdown.remove();
+                    } catch (e) { alert("Error reading file."); }
+                };
             }
 
             function openViewFileModal(fileName, content, downloadedFiles = [], notDownloadedFiles = [], fullPath = '', repoUrl = '') {
+                const textExtensions = ['.js', '.json', '.css', '.html', '.txt', '.md', '.py', '.sh', '.xml', '.yaml', '.yml', '.ini', '.conf'];
+                const isTextFile = (name) => textExtensions.some(ext => name.toLowerCase().endsWith(ext));
+
+                // Helper to convert GitHub-style paths (e.g. plugins/Name/file.js) to local relative paths (Name/file.js)
+                const getLocalPath = (p) => p.startsWith('plugins/') ? p.substring(8) : p;
+
                 const overlay = document.createElement('div');
                 overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:100000; display:flex; align-items:center; justify-content:center; color:#000;';
                 
@@ -781,9 +1036,16 @@
                 const codeArea = document.createElement('textarea');
                 codeArea.readOnly = true;
                 codeArea.style.cssText = 'flex-grow:1; width:100%; font-family:monospace; font-size:12px; padding:10px; border:1px solid #ddd; border-radius:4px; white-space:pre; overflow:auto; background:#f9f9f9; resize:none; color:#333;';
-                codeArea.value = content;
+                
+                if (isTextFile(fileName)) {
+                    codeArea.value = content;
+                } else {
+                    codeArea.value = `[INFO] The file "${fileName}" is in a non-textual format and cannot be displayed here.`;
+                    codeArea.style.color = "#777";
+                }
 
                 const loadFileContent = async (targetFile) => {
+                    codeArea.style.color = "#333"; // Reset to default text color
                     codeArea.value = `Loading ${targetFile}...`;
                     const nameSpan = header.querySelector('.sc-view-filename');
                     if (nameSpan) nameSpan.textContent = targetFile;
@@ -797,6 +1059,12 @@
                         }
                     }
                     
+                    if (!isTextFile(targetFile)) {
+                        codeArea.value = `[INFO] The file "${targetFile}" is in a non-textual format and cannot be displayed here.`;
+                        codeArea.style.color = "#777";
+                        return;
+                    }
+
                     try {
                         const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent(targetFile)}`);
                         if (!res.ok) throw new Error();
@@ -818,12 +1086,13 @@
                     const ul = document.createElement('ul');
                     ul.style.cssText = 'margin:0; padding-left:20px;';
                     downloadedFiles.forEach(f => {
+                        const localF = getLocalPath(f);
                         const li = document.createElement('li');
-                        li.textContent = f;
+                        li.textContent = localF;
                         li.style.cssText = 'cursor: pointer; color: #0066cc; text-decoration: underline; margin-bottom: 2px;';
                         li.onmouseover = () => li.style.color = '#fe0830';
                         li.onmouseout = () => li.style.color = '#0066cc';
-                        li.onclick = () => loadFileContent(f);
+                        li.onclick = () => loadFileContent(localF);
                         ul.appendChild(li);
                     });
                     filesList.appendChild(ul);

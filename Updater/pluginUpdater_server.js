@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.0.6)
+ * Updater Plugin for FM-DX Webserver (v. 0.0.7)
  * ************************************************
  */
 
@@ -145,7 +145,7 @@ async function downloadRecursive(owner, repo, branch, remotePath, localBaseDir) 
  */
 endpointsRouter.get('/plugins/Updater/settings', (req, res) => {
     const settings = readJsonFile(settingsPath);
-    res.json(settings.visibility ? settings : { visibility: 'both' });
+    res.json(settings.showInPluginPanel !== undefined ? settings : { showInPluginPanel: true, showInHeader: true, showInSetup: true });
 });
 
 /**
@@ -199,68 +199,109 @@ endpointsRouter.post('/plugins/Updater/save-override', express.json(), (req, res
 });
 
 /**
- * Endpoint to restart the server (requires Restart=always in the .service file)
+ * Endpoint to merge new_data.json into pl_data.json
  */
-endpointsRouter.post('/plugins/Updater/restart-server', express.json(), (req, res) => {
-    logInfo(`[${pluginName}] Server restart requested via UI...`);
-    res.json({ ok: true, message: "Restarting server..." }); // Give time for the response to be sent before terminating the process
+endpointsRouter.post('/plugins/Updater/commit-overrides', express.json(), (req, res) => {
+    try {
+        const staticData = readJsonFile(staticPath);
+        const dynamicData = readJsonFile(overridesPath);
+        const merged = { ...staticData, ...dynamicData };
 
-    // Give the response time to be sent before terminating the process
-    setTimeout(() => {
-        process.exit(0); 
-    }, 1000);
+        fs.writeFileSync(staticPath, JSON.stringify(merged, null, 2), 'utf8');
+        fs.writeFileSync(overridesPath, JSON.stringify({}, null, 2), 'utf8');
+
+        logInfo(`[${pluginName}] Merged new_data.json into pl_data.json and cleared new_data.json`);
+        res.json({ ok: true });
+    } catch (e) {
+        logError(`[${pluginName}] Error committing overrides:`, e);
+        res.status(500).json({ ok: false, error: e.message });
+    }
 });
 
 /**
  * Endpoint to perform a plugin update (downloads files from GitHub)
  */
 endpointsRouter.post('/plugins/Updater/update-plugin', express.json(), async (req, res) => {
-    const { pluginName, rawBaseUrl, remoteDescriptorPath, localDescriptorName, frontEndPath, localDir } = req.body;
+    // Destructure required parameters from the request body
+    const { pluginName, rawBaseUrl, remoteDescriptorPath, localDescriptorName, localDir } = req.body;
     try {
         logInfo(`[Updater] Updating plugin: ${pluginName} from ${rawBaseUrl}`);
-        let downloadedList = [];
-        let notDownloadedList = [];
-
-        // 1. Download the main descriptor file to /plugins
-        await download(`${rawBaseUrl}/${remoteDescriptorPath}`, path.join(pluginsDir, localDescriptorName));
-        downloadedList.push(remoteDescriptorPath); // 2. URL analysis to extract Owner, Repo, and Branch for the API
-
-        // 2. URL analysis to extract Owner, Repo, and Branch for the APIs
-        // rawBaseUrl e.g.: https://raw.githubusercontent.com/mm-prg/FavStations/main
+        
+        // Parse the rawBaseUrl to extract Owner, Repo, and Branch
+        // Example rawBaseUrl: https://raw.githubusercontent.com/mm-prg/FavStations/main
         const repoMatch = rawBaseUrl.match(/github(?:usercontent)?\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)/);
-        if (repoMatch) {
-            const [_, owner, repo, branch] = repoMatch;
-            const relativeDir = localDir || (frontEndPath ? path.dirname(frontEndPath) : "");
-            const remoteDirPath = relativeDir.replace(/\\/g, '/'); // GitHub expects slashes
+        if (!repoMatch) throw new Error("Invalid repository URL format");
+        const [_, owner, repo, branch] = repoMatch;
 
-            if (remoteDirPath && remoteDirPath !== ".") {
-                const localTargetDir = path.join(pluginsDir, relativeDir);
-                if (!fs.existsSync(localTargetDir)) fs.mkdirSync(localTargetDir, { recursive: true });
-                
-                logInfo(`[Updater] Starting recursive download for ${remoteDirPath}...`);
-                const files = await downloadRecursive(owner, repo, branch, remoteDirPath, localTargetDir);
-                downloadedList = downloadedList.concat(files);
-            }
+        let downloadedList = [];
+        let allRepoFiles = [];
 
-            // 3. Get all files in the repository to identify what was skipped
-            try {
-                const treeData = await fetchGithubApi(`https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`);
-                if (treeData && treeData.tree) {
-                    const allRepoFiles = treeData.tree
-                        .filter(item => item.type === 'blob')
-                        .map(item => item.path);
-                    notDownloadedList = allRepoFiles.filter(f => !downloadedList.includes(f));
-                }
-            } catch (apiErr) {
-                logError(`[Updater] Failed to fetch repo tree for ${pluginName}:`, apiErr);
+        // Step 1: Download the list of all files in the repository (GitHub Tree API)
+        try {
+            const treeData = await fetchGithubApi(`https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`);
+            if (treeData && treeData.tree) {
+                allRepoFiles = treeData.tree
+                    .filter(item => item.type === 'blob')
+                    .map(item => item.path);
             }
+        } catch (apiErr) {
+            logError(`[Updater] Failed to fetch repo tree for ${pluginName}:`, apiErr);
         }
+
+        // Step 2: Download the descriptor file and save it in the local "plugins" directory
+        const descriptorUrl = `${rawBaseUrl}/${remoteDescriptorPath}`;
+        const descriptorDest = path.join(pluginsDir, localDescriptorName);
+        await download(descriptorUrl, descriptorDest);
+        downloadedList.push(remoteDescriptorPath);
+
+        // Step 3: Download the contents of the specified files directory and save it locally
+        if (localDir && localDir !== "" && localDir !== ".") {
+            // Build the remote path. If the descriptor is in a subdirectory (e.g. 'plugins/'),
+            // the files directory is likely also located within that same subdirectory.
+            let remoteDirPath = localDir.replace(/\\/g, '/');
+            const descriptorDir = path.dirname(remoteDescriptorPath).replace(/\\/g, '/');
+            
+            if (descriptorDir !== "." && descriptorDir !== "" && !remoteDirPath.startsWith(descriptorDir + "/")) {
+                // Prepend the descriptor's folder to the remote search path if it's not already there
+                remoteDirPath = (descriptorDir + "/" + remoteDirPath).replace(/\/+/g, '/');
+            }
+
+            const localTargetDir = path.join(pluginsDir, localDir);
+            
+            // Create the local directory inside "plugins" if it doesn't exist
+            if (!fs.existsSync(localTargetDir)) {
+                fs.mkdirSync(localTargetDir, { recursive: true });
+                logInfo(`[Updater] Created local directory: ${localTargetDir}`);
+            }
+            
+            logInfo(`[Updater] Starting recursive download for ${remoteDirPath}...`);
+            const files = await downloadRecursive(owner, repo, branch, remoteDirPath, localTargetDir);
+            downloadedList = downloadedList.concat(files);
+        }
+
+        // Step 4: Compare lists and save the metadata to new_data.json
+        const notDownloadedList = allRepoFiles.filter(f => !downloadedList.includes(f));
+        
+        const overrides = loadOverrides();
+        overrides[pluginName] = { 
+            ...(overrides[pluginName] || {}),
+            downloadedFiles: downloadedList,
+            notDownloadedFiles: notDownloadedList
+        };
+        saveOverrides(overrides);
+
+        // Return the summary of changes to the frontend
         res.json({ ok: true, files: downloadedList, notDownloadedFiles: notDownloadedList });
     } catch (e) {
+        // Log the failure and return a 500 error
         logError(`[Updater] Update failed for ${pluginName}:`, e);
         res.status(500).json({ ok: false, error: e.message });
     }
 });
+
+/**
+ * Endpoint to read local descriptor file content // Security: check that the file is inside the plugins folder
+ */
 
 /**
  * Endpoint to read local descriptor file content // Security: check that the file is inside the plugins folder
@@ -285,13 +326,14 @@ endpointsRouter.get('/plugins/Updater/read-file', (req, res) => {
 });
 
 /**
- * Endpoint to delete a plugin // 1. Remove the descriptor file in the /plugins root
+ * Endpoint to delete a plugin from the server
  */
 endpointsRouter.post('/plugins/Updater/delete-plugin', express.json(), (req, res) => {
     const { pluginName, fileName, localDir } = req.body;
     try {
         logInfo(`[Updater] Request to delete plugin: ${pluginName}`);
-        // 2. Remove the local directory (e.g., plugins/FavStations/)
+
+        // Step 1: Remove the main descriptor file (e.g., /plugins/PluginName.js)
         if (fileName) {
             const filePath = path.join(pluginsDir, fileName);
             if (fs.existsSync(filePath)) {
@@ -300,7 +342,8 @@ endpointsRouter.post('/plugins/Updater/delete-plugin', express.json(), (req, res
             }
         }
 
-        // 2. Remove the local directory (e.g., plugins/FavStations/)
+        // Step 2: Remove the local plugin directory (e.g., /plugins/PluginFolder/)
+        // Safety check: ensure localDir is not empty or pointing to restricted paths
         if (localDir && localDir !== "" && localDir !== "." && localDir !== "..") {
             const dirPath = path.join(pluginsDir, localDir);
             if (fs.existsSync(dirPath)) {
@@ -309,8 +352,10 @@ endpointsRouter.post('/plugins/Updater/delete-plugin', express.json(), (req, res
             }
         }
 
+        // Return success confirmation to the client
         res.json({ ok: true });
     } catch (e) {
+        // Handle any file system or permission errors
         logError(`[Updater] Deletion failed for ${pluginName}:`, e);
         res.status(500).json({ ok: false, error: e.message });
     }
