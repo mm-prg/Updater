@@ -1,7 +1,9 @@
-# Updater Plugin for FM-DX Webserver<img width="1876" height="961" alt="setup page" src="https://github.com/user-attachments/assets/c173a588-1217-4c53-a5bd-b8d927edb15a" />
-
+# Updater Plugin for FM-DX Webserver 
 
 The **Updater** plugin is a powerful management tool designed for the [FM-DX Webserver](https://github.com/NoobishSVK/fm-dx-webserver). It provides a centralized interface to track, update, and install plugins directly from GitHub.
+
+<img width="1876" height="961" alt="setup page" src="https://github.com/user-attachments/assets/c173a588-1217-4c53-a5bd-b8d927edb15a" />
+
 
 ## Features
 
