@@ -1,6 +1,9 @@
-# Updater Plugin for FM-DX Webserver
+# Updater Plugin for FM-DX Webserver 
 
 The **Updater** plugin is a management tool designed for the [FM-DX Webserver](https://github.com/NoobishSVK/fm-dx-webserver). It provides a centralized interface to track, update, and install plugins directly from GitHub.
+
+<img width="1876" height="961" alt="setup page" src="https://github.com/user-attachments/assets/c173a588-1217-4c53-a5bd-b8d927edb15a" />
+
 
 <img width="1876" height="961" alt="setup page" src="https://github.com/user-attachments/assets/c173a588-1217-4c53-a5bd-b8d927edb15a" />
 
@@ -76,6 +79,10 @@ Developed by **mm-prg**.
 
 ---
 
+<<<<<<< HEAD
 *Disclaimer: This plugin requires administrative privileges and an active internet connection to communicate with GitHub.
 The plugin is provided as is
  It is recommended to backup your `plugins/` directory before performing major updates.*
+=======
+*Disclaimer: This plugin requires administrative privileges and an active internet connection to communicate with GitHub. It is recommended to backup your `plugins/` directory before performing major updates.*
+>>>>>>> 7e8f224b92a3decd4e665c096cceac64165740b3
