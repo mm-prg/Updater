@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.0.7b)
+ * Updater Plugin for FM-DX Webserver (v. 0.0.7c)
  * ************************************************
  */
 
@@ -19,14 +19,15 @@ const pluginsDir = path.resolve(__dirname, '..');
 const configsDir = path.resolve(pluginsDir, '..', 'plugins_configs');
 
 // Path for manual settings (GitHub overrides)
-const overridesPath = path.join(__dirname, 'new_data.json'); // Dynamic file (new/modified)
-const staticPath = path.join(__dirname, 'pl_data.json');    // Static file (known)
+const repoDataPath = path.join(__dirname, 'repo_data.json'); // Static file (known)
+const overridesPath = path.join(__dirname, 'plugins_data.json'); // Dynamic file (new/modified)
 const settingsPath = path.join(configsDir, 'Updater.json'); // Global options file
 
 // Ensure the settings directory exists
 if (!fs.existsSync(configsDir)) fs.mkdirSync(configsDir, { recursive: true });
-// Ensure the new_data.json file exists to avoid read/write errors
+// Ensure the plugins_data.json file exists to avoid read/write errors
 if (!fs.existsSync(overridesPath)) fs.writeFileSync(overridesPath, JSON.stringify({}, null, 2), 'utf8');
+if (!fs.existsSync(repoDataPath)) fs.writeFileSync(repoDataPath, JSON.stringify({}, null, 2), 'utf8');
 
 logInfo(`[${pluginName}] Backend script is being loaded...`);
 
@@ -42,33 +43,42 @@ function readJsonFile(filePath) {
 }
 
 /**
- * Loads plugin data: pl_data.json (known) + new_data.json (new/modified)
+ * Loads plugin data: repo_data.json (known URLs) + plugins_data.json (overrides)
  */
-function loadOverrides() { // Data in new_data.json overrides static data from pl_data.json
-    const staticData = readJsonFile(staticPath);
+function loadOverrides() { 
+    const rawStatic = readJsonFile(repoDataPath);
     const dynamicData = readJsonFile(overridesPath);
+    
+    // Normalize static data: convert simple URL strings to objects { repoUrl: URL }
+    const staticData = {};
+    for (const [name, val] of Object.entries(rawStatic)) {
+        staticData[name] = typeof val === 'string' ? { repoUrl: val } : val;
+    }
+
     const merged = { ...staticData, ...dynamicData };
     // Filter out plugins explicitly marked as null (deleted)
     return Object.fromEntries(Object.entries(merged).filter(([_, v]) => v !== null));
 }
 
 /**
- * Saves to new_data.json only data that differs from pl_data.json
+ * Saves to plugins_data.json only data that differs from repo_data.json
  */
-function saveOverrides(overrides) { // Store in new_data.json only if data differs from static ones in pl_data.json
-    try {
-        const staticData = readJsonFile(staticPath);
+function saveOverrides(overrides) { 
+    try { 
+        const rawStatic = readJsonFile(repoDataPath);
         const toSave = {};
 
-        // Save entries that are new or different from the static baseline
         for (const [name, data] of Object.entries(overrides)) {
-            if (JSON.stringify(staticData[name]) !== JSON.stringify(data)) {
+            const staticVal = rawStatic[name];
+            const staticEntry = typeof staticVal === 'string' ? { repoUrl: staticVal } : (staticVal || {});
+            
+            if (JSON.stringify(staticEntry) !== JSON.stringify(data)) {
                 toSave[name] = data;
             }
         }
 
-        // Record deletions: if it was in static data but is now gone from the object, mark it as null
-        for (const name of Object.keys(staticData)) {
+        // Record deletions: if it was in static data but is now gone, mark as null
+        for (const name of Object.keys(rawStatic)) {
             if (!(name in overrides)) {
                 toSave[name] = null;
             }
@@ -77,7 +87,7 @@ function saveOverrides(overrides) { // Store in new_data.json only if data diffe
         fs.writeFileSync(overridesPath, JSON.stringify(toSave, null, 2), 'utf8');
         return true;
     } catch (e) {
-        logError(`[${pluginName}] Error saving overrides to new_data.json:`, e);
+        logError(`[${pluginName}] Error saving overrides to plugins_data.json:`, e);
         return false;
     }
 }
@@ -119,6 +129,45 @@ const fetchGithubApi = (url) => new Promise((resolve, reject) => { // Recursivel
         });
     }).on('error', reject);
 });
+
+/**
+ * Automatically discovers descriptor file and local directory from a GitHub repository.
+ */
+async function discoverMetadataFromRepo(repoUrl) {
+    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)/);
+    if (!match) return null;
+    const [_, owner, repo] = match;
+
+    try {
+        let contents = await fetchGithubApi(`https://api.github.com/repos/${owner}/${repo}/contents/`);
+        if (!Array.isArray(contents)) return null;
+
+        const pluginsDirItem = contents.find(f => f.name.toLowerCase() === 'plugins' && f.type === 'dir');
+        if (pluginsDirItem) {
+            const pContents = await fetchGithubApi(`https://api.github.com/repos/${owner}/${repo}/contents/plugins`);
+            if (Array.isArray(pContents)) contents = pContents;
+        }
+
+        const jsFiles = contents.filter(f => f.name.endsWith('.js') && f.name !== 'index.js' && !f.name.includes('.frontend.'));
+        for (const file of jsFiles) {
+            const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/${file.path}`;
+            const text = await new Promise((resolve) => {
+                https.get(rawUrl, { headers: { 'User-Agent': 'FM-DX-Webserver-Updater' } }, res => {
+                    let d = ''; res.on('data', c => d += c); res.on('end', () => resolve(d));
+                }).on('error', () => resolve(''));
+            });
+
+            if (text.includes('pluginConfig')) {
+                const feMatch = text.match(/frontEndPath\s*:\s*['"]([^'"]+)['"]/);
+                const localDir = (feMatch && feMatch[1].includes('/')) ? feMatch[1].split('/')[0] : "";
+                return { fileUrl: file.path, localDir };
+            }
+        }
+    } catch (e) {
+        logError(`[Updater] Auto-discovery failed for ${repoUrl}:`, e);
+    }
+    return null;
+}
 
 /**
  * Recursively downloads the content of a folder from GitHub via API
@@ -164,9 +213,9 @@ endpointsRouter.post('/plugins/Updater/settings', express.json(), (req, res) => 
         fs.writeFileSync(settingsPath, JSON.stringify(req.body, null, 2), 'utf8');
         res.json({ ok: true });
     } catch (e) {
-        logError(`[${pluginName}] Error saving settings to ${settingsPath}:`, e); // Endpoint to save manual GitHub data
+        logError(`[${pluginName}] Error saving settings to ${settingsPath}:`, e);
         res.status(500).json({ ok: false, error: e.message });
-    } // Create local directory if defined and does not exist
+    }
 });
 
 /**
@@ -175,6 +224,14 @@ endpointsRouter.post('/plugins/Updater/settings', express.json(), (req, res) => 
 endpointsRouter.post('/plugins/Updater/save-override', express.json(), (req, res) => {
     try {
         const { pluginName: name, repoUrl, fileUrl, localDir, downloadedFiles, notDownloadedFiles } = req.body; // Merge new data with existing ones to avoid losing information
+
+        // Se il plugin ha un URL repository e non è ancora presente in repo_data.json, lo aggiungiamo
+        const rawStatic = readJsonFile(repoDataPath);
+        if (repoUrl && !rawStatic[name]) {
+            rawStatic[name] = repoUrl;
+            fs.writeFileSync(repoDataPath, JSON.stringify(rawStatic, null, 2), 'utf8');
+            logInfo(`[${pluginName}] Added repository URL for "${name}" to repo_data.json`);
+        }
 
         // Create local directory if defined and does not exist
         if (localDir && localDir !== "" && localDir !== "." && localDir !== "..") {
@@ -185,14 +242,12 @@ endpointsRouter.post('/plugins/Updater/save-override', express.json(), (req, res
             }
         }
 
-        const overrides = loadOverrides(); // (e.g., when the client sends only the list of downloaded files after an update)
+        const overrides = loadOverrides();
         
-        // Merge new data with existing ones to avoid losing information
-        // (e.g., when the client sends only the list of downloaded files after an update)
         overrides[name] = { 
             ...(overrides[name] || {}),
-            ...(repoUrl !== undefined && { repoUrl }),
-            ...(fileUrl !== undefined && { fileUrl }),
+            ...(repoUrl !== undefined && repoUrl !== null && { repoUrl }),
+            ...(fileUrl !== undefined && fileUrl !== null && { fileUrl }),
             ...(localDir !== undefined && { localDir }),
             ...(downloadedFiles !== undefined && { downloadedFiles }),
             ...(notDownloadedFiles !== undefined && { notDownloadedFiles })
@@ -202,26 +257,6 @@ endpointsRouter.post('/plugins/Updater/save-override', express.json(), (req, res
         else res.status(500).json({ ok: false });
     } catch (e) {
         logError(`[${pluginName}] Error in save-override:`, e);
-        res.status(500).json({ ok: false, error: e.message });
-    }
-});
-
-/**
- * Endpoint to merge new_data.json into pl_data.json
- */
-endpointsRouter.post('/plugins/Updater/commit-overrides', express.json(), (req, res) => {
-    try {
-        const staticData = readJsonFile(staticPath);
-        const dynamicData = readJsonFile(overridesPath);
-        const merged = { ...staticData, ...dynamicData };
-
-        fs.writeFileSync(staticPath, JSON.stringify(merged, null, 2), 'utf8');
-        fs.writeFileSync(overridesPath, JSON.stringify({}, null, 2), 'utf8');
-
-        logInfo(`[${pluginName}] Merged new_data.json into pl_data.json and cleared new_data.json`);
-        res.json({ ok: true });
-    } catch (e) {
-        logError(`[${pluginName}] Error committing overrides:`, e);
         res.status(500).json({ ok: false, error: e.message });
     }
 });
@@ -312,10 +347,12 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json(), async (re
  */
 endpointsRouter.get('/plugins/Updater/list-dir', (req, res) => {
     const relativePath = req.query.path || '';
-    const absolutePath = path.join(pluginsDir, relativePath);
+    const root = req.query.root;
+    const baseDir = root === 'configs' ? configsDir : pluginsDir;
+    const absolutePath = path.resolve(baseDir, relativePath);
     
-    // Security: check that the path is inside the plugins folder
-    if (!absolutePath.startsWith(pluginsDir)) {
+    // Security: check that the path is inside the allowed folder
+    if (!absolutePath.startsWith(baseDir)) {
         return res.status(403).send('Access denied');
     }
 
@@ -334,20 +371,83 @@ endpointsRouter.get('/plugins/Updater/list-dir', (req, res) => {
 });
 
 /**
- * Endpoint to read local descriptor file content // Security: check that the file is inside the plugins folder
+ * Endpoint to save content to a file within the plugins folder
  */
+endpointsRouter.post('/plugins/Updater/save-file', express.json(), (req, res) => {
+    const { fileName, content, root } = req.body;
+    if (!fileName || content === undefined) return res.status(400).send('Missing fileName or content');
+
+    const baseDir = root === 'configs' ? configsDir : pluginsDir;
+    const filePath = path.resolve(baseDir, fileName);
+
+    // Security: check that the file is inside the allowed folder
+    const relative = path.relative(baseDir, filePath);
+    const isSafe = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
+
+    if (!isSafe || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+        logError(`[${pluginName}] Access denied or file not found for saving: ${filePath} (base: ${baseDir})`);
+        return res.status(403).send('Access denied or file not found');
+    }
+
+    try {
+        fs.writeFileSync(filePath, content, 'utf8');
+        logInfo(`[${pluginName}] File saved: ${filePath}`);
+        res.json({ ok: true });
+    } catch (e) {
+        logError(`[${pluginName}] Error saving file ${filePath}:`, e);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
 
 /**
- * Endpoint to read local descriptor file content // Security: check that the file is inside the plugins folder
+ * Endpoint to delete a file within the plugins folder
+ */
+endpointsRouter.post('/plugins/Updater/delete-file', express.json(), (req, res) => {
+    const { fileName, root } = req.body;
+    if (!fileName) return res.status(400).send('Missing fileName');
+
+    const baseDir = root === 'configs' ? configsDir : pluginsDir;
+    const filePath = path.resolve(baseDir, fileName);
+
+    // Security: check that the file is inside the allowed folder
+    const relative = path.relative(baseDir, filePath);
+    const isSafe = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
+
+    if (!isSafe || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+        logError(`[${pluginName}] Access denied or file not found for deletion: ${filePath}`);
+        return res.status(403).send('Access denied or file not found');
+    }
+
+    try {
+        fs.unlinkSync(filePath);
+        logInfo(`[${pluginName}] File deleted: ${filePath}`);
+        res.json({ ok: true });
+    } catch (e) {
+        logError(`[${pluginName}] Error deleting file ${filePath}:`, e);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+
+/**
+ * Endpoint to read file content.
+ * Security: ensures the file is inside the allowed folder (plugins or configs).
  */
 endpointsRouter.get('/plugins/Updater/read-file', (req, res) => {
-    const { fileName } = req.query;
+    const { fileName, root } = req.query;
     if (!fileName) return res.status(400).send('Missing fileName');
     
-    const filePath = path.join(pluginsDir, fileName);
+    const baseDir = root === 'configs' ? configsDir : pluginsDir;
+    const filePath = path.resolve(baseDir, fileName);
     
-    // Security: check that the file is inside the plugins folder
-    if (!filePath.startsWith(pluginsDir) || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    logInfo(`[Updater] Read request for: ${fileName} (Root: ${root || 'plugins'})`);
+
+    // Security: check that the file is inside the allowed folder using relative path
+    const relative = path.relative(baseDir, filePath);
+    const isSafe = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
+
+    if (!isSafe || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+        logError(`[Updater] Read access denied or file not found: ${filePath}. Safe check: ${isSafe}`);
         return res.status(403).send('Access denied or file not found');
     }
 
@@ -386,12 +486,12 @@ endpointsRouter.post('/plugins/Updater/delete-plugin', express.json(), (req, res
             }
         }
 
-        // Step 3: Remove the plugin's entry from new_data.json
+        // Step 3: Remove the plugin's entry from plugins_data.json
         const overrides = loadOverrides();
         if (overrides[pluginName]) {
             delete overrides[pluginName];
-            saveOverrides(overrides); // This will save the modified overrides (without the deleted plugin) to new_data.json
-            logInfo(`[Updater] Removed entry for ${pluginName} from new_data.json`);
+            saveOverrides(overrides); // This will save the modified overrides (without the deleted plugin) to plugins_data.json
+            logInfo(`[Updater] Removed entry for ${pluginName} from plugins_data.json`);
         }
 
         // Return success confirmation to the client
@@ -404,16 +504,25 @@ endpointsRouter.post('/plugins/Updater/delete-plugin', express.json(), (req, res
 });
 
 /**
- * Endpoint to list all installed plugins by reading .js files in the /plugins root // Search for .js files acting as descriptors (e.g., FavStations.js, Updater.js)
+ * Endpoint to list all installed plugins. Automatically discovers missing metadata if a repo URL is known.
  */
-endpointsRouter.get('/plugins/Updater/list', (req, res) => {
+endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
     try {
         logInfo(`[${pluginName}] Scanning directory: ${pluginsDir}`);
         const files = fs.readdirSync(pluginsDir);
         const pluginList = [];
-        const overrides = loadOverrides(); // Exclude system files or scripts that are clearly frontend only
+        
+        // Carichiamo i dati per gestire la priorità: Override > Code > repo_data
+        const dynamicData = readJsonFile(overridesPath);
+        const rawStatic = readJsonFile(repoDataPath);
+        const staticData = {};
+        for (const [n, v] of Object.entries(rawStatic)) {
+            staticData[n] = typeof v === 'string' ? { repoUrl: v } : v;
+        }
+        const overrides = loadOverrides(); 
+        let needsSave = false;
 
-        files.forEach(file => {
+        for (const file of files) {
             // Search for .js files acting as descriptors (e.g., FavStations.js, Updater.js)
             if (file.endsWith('.js')) {
                 const filePath = path.join(pluginsDir, file);
@@ -427,7 +536,25 @@ endpointsRouter.get('/plugins/Updater/list', (req, res) => {
                         if (pluginModule && pluginModule.pluginConfig) {
                             const config = pluginModule.pluginConfig;
                             const name = config.name;
-                            const override = overrides[name] || {};
+                            const dyn = dynamicData[name] || {};
+                            const stat = staticData[name] || {};
+
+                            // Logica richiesta: se non c'è nel config, guarda in repo_data. dyn ha sempre priorità (manuale).
+                            let repoUrl = (dyn && dyn.repoUrl) ? dyn.repoUrl : (config.repoUrl || stat.repoUrl);
+
+                            // Automazione richiesta: se abbiamo il repo ma mancano i dettagli (fileUrl/localDir), ricava da GitHub
+                            if (repoUrl && (!dyn.fileUrl || dyn.localDir === undefined)) {
+                                logInfo(`[${pluginName}] Attempting auto-discovery for ${name} at ${repoUrl}`);
+                                const discovered = await discoverMetadataFromRepo(repoUrl);
+                                if (discovered) {
+                                    logInfo(`[${pluginName}] Discovered metadata for ${name}:`, discovered);
+                                    dynamicData[name] = { ...dyn, ...discovered, repoUrl };
+                                    needsSave = true;
+                                    // Aggiorna l'oggetto locale per la risposta immediata
+                                    Object.assign(dyn, discovered);
+                                    repoUrl = dyn.repoUrl;
+                                }
+                            }
 
                             // Calculate default local directory (where the frontend resides)
                             let defaultLocalDir = "";
@@ -440,8 +567,9 @@ endpointsRouter.get('/plugins/Updater/list', (req, res) => {
                                 ...config,
                                 fileName: file,
                                 fullPath: filePath,
-                                ...override,
-                                localDir: override.localDir !== undefined ? override.localDir : defaultLocalDir
+                                ...dyn,
+                                repoUrl: repoUrl,
+                                localDir: dyn.localDir !== undefined ? dyn.localDir : (config.localDir || defaultLocalDir)
                             });
 //                            logInfo(`[${pluginName}] Plugin metadata loaded for: ${pluginModule.pluginConfig.name}`);
                         } // Skip files that are not valid modules or don't contain pluginConfig
@@ -451,8 +579,11 @@ endpointsRouter.get('/plugins/Updater/list', (req, res) => {
                     }
                 }
             }
-        });
-        // Add plugins defined in overrides that were not found physically
+        }
+
+        if (needsSave) saveOverrides(dynamicData);
+
+        // Add plugins defined in plugins_data.json that were not found physically
         Object.keys(overrides).forEach(name => {
             const alreadyInList = pluginList.find(p => p.name === name);
             if (!alreadyInList) {

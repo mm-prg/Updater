@@ -7,7 +7,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.0.7b';
+    const pluginVersion = '0.0.7c';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
 
@@ -129,7 +129,7 @@
             .updater-btn-small { padding: 4px 8px; font-size: 10px; }
             .updater-title { color: #fff; margin: 0; font-size: 1.2em; font-weight: bold; }
             .updater-subtitle { color: #aaa; font-size: 0.85em; margin-top: 2px; }
-            .updater-sort-link { color: #3fa9f5; cursor: pointer; text-decoration: none; font-size: 11px; margin-right: 10px; }
+            .updater-sort-link { color: #3fa9f5; cursor: pointer; text-decoration: none; font-size: 11px; margin-right: 0; }
             .updater-sort-link:hover { text-decoration: underline; }
         `;
         document.head.appendChild(styleBlock);
@@ -177,21 +177,22 @@
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px;">
                 <h3 class="updater-title">Installed Plugins</h3>
                 <div style="display: flex; align-items: center; gap: 10px;">
+                    <a href="https://github.com/mm-prg/Updater" target="_blank" class="updater-btn" style="background:#333; color:#fff; text-decoration:none; display:inline-flex; align-items:center; justify-content:center;" title="Updater Repository"><i class="fa-solid fa-circle-question"></i></a>
                     <button id="updater-options-btn" class="updater-btn" style="background:#333; color:#fff;" title="Options"><i class="fa-solid fa-gear"></i></button>
                     <span style="color: #777; font-size: 11px;">v${pluginVersion}</span>
                 </div>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                 <div id="updater-status" class="updater-subtitle" style="color: #3fa9f5; font-weight: bold;">Scanning...</div>
-                <button id="add-plugin-btn" class="updater-btn updater-btn-primary" style="width: fit-content;">Add new plugin</button>
+                <button id="add-plugin-btn" class="updater-btn updater-btn-primary" style="width: fit-content;" title="Install a new plugin by providing its GitHub repository URL">Add new plugin</button>
             </div>
             
             <div id="updater-sort-controls" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 0 12px; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #222; padding-bottom: 5px; opacity: 0.8; border-left: 3px solid transparent;">
-                <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px;">
-                    <span class="updater-sort-link" data-sort="name" style="flex: 0 0 25%;">Name ↕</span>
-                    <span class="updater-sort-link" data-sort="version" style="flex: 0 0 10%;">Ver ↕</span>
-                    <span class="updater-sort-link" data-sort="author" style="flex: 0 0 20%;">Author ↕</span>
-                    <span class="updater-sort-link" data-sort="status" style="flex: 1;">Status ↕</span>
+                <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden;">
+                    <div class="updater-sort-link" data-sort="name" style="flex: 0 0 25%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Name ↕</div>
+                    <div class="updater-sort-link" data-sort="author" style="flex: 0 0 20%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Author ↕</div>
+                    <div class="updater-sort-link" data-sort="version" style="flex: 0 0 10%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Ver ↕</div>
+                    <div class="updater-sort-link" data-sort="status" style="flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Status ↕</div>
                 </div>
                 <div style="width: 160px; flex-shrink: 0; margin-left: 10px;"></div>
             </div>
@@ -348,14 +349,14 @@
                 statusCell.title = `Repository: ${fullRepoUrl}\nDescriptor: ${fullFileUrl}\nDirectory: ${p.localDir || '(root)'}`;
 
                 if (!remoteVer) {
-                    statusCell.innerHTML = `<span style="color: #ffaa00;">Repo not found</span>`;
+                    statusCell.innerHTML = `<span style="color: #ffaa00;">Repo not found, edit data!</span>`;
                 } else {
                     const viewLink = `<a href="${fullRepoUrl}" target="_blank" style="margin-left:5px; color:#3fa9f5; text-decoration:underline; font-size:10px;">Repo</a>`;
                     
                     if (isNewer(p.version || "0.0.0", remoteVer)) {
                         statusCell.innerHTML = `<span style="color: #fe0830; font-weight: bold;">🚀 Update: ${remoteVer}</span> ${viewLink}`;
                     } else {
-                        statusCell.innerHTML = `<span style="color: #3fa9f5;">✓ Up to date</span> ${viewLink}`;
+                        statusCell.innerHTML = `<span style="color: #00ff00;">✓ Up to date</span> ${viewLink}`;
                     }
                 }
 
@@ -374,6 +375,7 @@
                         btn.className = `updater-btn updater-btn-small ${btnClass}`;
                         btn.textContent = isUpdate ? 'Update' : 'Reinstall';
                         btn.style.background = isUpdate ? '#fe0830' : '#444';
+                        btn.title = isUpdate ? `Download and install the new version (${remoteVer})` : `Force download and overwrite files for the current version (${p.version})`;
                         btn.style.color = '#fff';
                         btn.style.marginRight = '4px';
                         btn.onclick = () => performUpdate(p);
@@ -387,7 +389,7 @@
                 p.cachedRemoteVer = remoteVer;
 
                 // If the check was successful (version found) and we had no saved parameters,
-                // store the automatically detected values in new_data.json for future runs.
+                // store the automatically detected values in plugins_data.json for future runs.
                 if (remoteVer && (!p.repoUrl || !p.fileUrl)) {
                     const owner = resolveOwner(p, allPlugins);
                     const repo = p.githubRepo || p.name.replace(/\s+/g, '-');
@@ -707,10 +709,15 @@
                 modal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:450px; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
                 modal.innerHTML = `
                     <h3 style="margin-top:0;">Add New Plugin</h3>
-                    <p style="font-size:12px; color:#666; margin-bottom:15px;">Enter the GitHub URL and click Verify to auto-fill details.</p>
+                    <p style="font-size:12px; color:#666; margin-bottom:15px;">Enter the GitHub URL and click Verify to auto-fill details.<br>
+                    Check the <a href="https://github.com/NoobishSVK/fm-dx-webserver/wiki/Plugin-List" target="_blank" style="color:#3fa9f5; text-decoration:underline;">Plugin List</a> for available repositories.</p>
                     <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">GitHub Repository URL</label>
-                        <div style="display:flex; gap:5px;"><input type="text" id="add-repo-url" placeholder="https://github.com/mm-prg/FavStations" style="flex-grow:1; min-width:0; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;"><button id="verify-repo-btn" style="width:34px; height:34px; background:#00ccff; border:none; border-radius:4px; cursor:pointer; font-size:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center;" title="Verify repository contents"><i class="fa-solid fa-magnifying-glass"></i></button></div>
+                        <div style="display:flex; gap:5px;">
+                            <input type="text" id="add-repo-url" list="repo-datalist" placeholder="https://github.com/mm-prg/FavStations" style="flex-grow:1; min-width:0; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
+                            <datalist id="repo-datalist"></datalist>
+                            <button id="verify-repo-btn" style="width:34px; height:34px; background:#00ccff; border:none; border-radius:4px; cursor:pointer; font-size:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center;" title="Verify repository contents"><i class="fa-solid fa-magnifying-glass"></i></button>
+                        </div>
                     </div>
                     <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">Descriptor File Path (.js) in Repo</label>
@@ -728,6 +735,25 @@
 
                 overlay.appendChild(modal);
                 document.body.appendChild(overlay);
+
+                // Carica i repository conosciuti per il datalist
+                fetch('/plugins/Updater/read-file?fileName=' + encodeURIComponent('Updater/repo_data.json'))
+                    .then(res => res.text())
+                    .then(text => {
+                        try {
+                            const repos = JSON.parse(text);
+                            const datalist = modal.querySelector('#repo-datalist');
+                            if (datalist && repos) {
+                                Object.entries(repos).forEach(([name, url]) => {
+                                    const option = document.createElement('option');
+                                    option.value = url;
+                                    option.textContent = name;
+                                    datalist.appendChild(option);
+                                });
+                            }
+                        } catch(e) {}
+                    })
+                    .catch(() => {});
 
                 // Automatically detect plugin info when the "Verify" button is clicked
                 modal.querySelector('#verify-repo-btn').onclick = async () => {
@@ -937,13 +963,8 @@
                     <button id="opt-save" style="width:100%; padding:6px; border:none; background:#fe0830; color:#fff; cursor:pointer; border-radius:4px; font-size:11px; font-weight:bold; margin-bottom:15px;">SAVE SETTINGS</button>
                     <div style="border-top:1px solid #333; padding-top:12px;">
                         <div style="margin-bottom:8px; font-weight:bold; color:#00ccff; font-size:11px; text-transform:uppercase;">Files & Explorer</div>
-                        <button id="browse-plugins-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-folder-tree"></i> Browse Plugins Folder</button>
-                        <button id="view-new-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-file-code"></i> new_data.json</button>
-                        <button id="view-pl-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-file-lines"></i> pl_data.json</button>
-                    </div>
-                    <div style="border-top:1px solid #333; padding-top:12px; margin-top:12px;">
-                        <div style="margin-bottom:8px; font-weight:bold; color:#ffaa00; font-size:11px; text-transform:uppercase;">Maintenance</div>
-                        <button id="commit-overrides-btn" title="Merge new_data into pl_data and clear new_data" style="background:#333; color:#ffaa00; border:1px solid #ffaa00; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; font-weight:bold;">MERGE NEW DATA</button>
+                        <button id="view-new-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-file-code"></i> plugins_data.json</button>
+                        <button id="view-repo-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-database"></i> repo_data.json</button>
                     </div>
                 `;
                 document.body.appendChild(dropdown);
@@ -975,242 +996,340 @@
                         }
                     } catch (e) { alert("Error saving settings."); }
                 };
-                dropdown.querySelector('#commit-overrides-btn').onclick = async () => {
-                    if (!confirm("Are you sure you want to merge all changes from new_data.json into pl_data.json?\n\nThis will update existing entries and add new ones, then clear new_data.json.")) return;
-                    try {
-                        const res = await fetch('/plugins/Updater/commit-overrides', { method: 'POST' });
-                        if (res.ok) {
-                            dropdown.remove();
-                            alert("Data merged successfully. Reloading...");
-                            location.reload();
-                        } else {
-                            const err = await res.json();
-                            alert("Error: " + (err.error || "Failed to merge data."));
-                        }
-                    } catch (e) { alert("Connection error."); }
-                };
-                dropdown.querySelector('#browse-plugins-btn').onclick = () => {
-                    openFolderExplorerModal('');
-                    dropdown.remove();
-                };
                 dropdown.querySelector('#view-new-data-btn').onclick = async () => {
                     try {
-                        const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent('Updater/new_data.json')}`);
+                        const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent('Updater/plugins_data.json')}`);
                         if (!res.ok) throw new Error();
-                        openViewFileModal('new_data.json', await res.text());
+                        openViewFileModal('plugins_data.json', await res.text());
                         dropdown.remove();
                     } catch (e) { alert("Error reading file."); }
                 };
-                dropdown.querySelector('#view-pl-data-btn').onclick = async () => {
+                dropdown.querySelector('#view-repo-data-btn').onclick = async () => {
                     try {
-                        const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent('Updater/pl_data.json')}`);
+                        const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent('Updater/repo_data.json')}`);
                         if (!res.ok) throw new Error();
-                        openViewFileModal('pl_data.json', await res.text());
+                        openViewFileModal('repo_data.json', await res.text());
                         dropdown.remove();
                     } catch (e) { alert("Error reading file."); }
                 };
             }
 
-            async function openFolderExplorerModal(initialPath = '') {
-                const overlay = document.createElement('div');
-                overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:100000; display:flex; align-items:center; justify-content:center; color:#000;';
-                
-                const modal = document.createElement('div');
-                modal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:85%; max-width:800px; height:80vh; display:flex; flex-direction:column; box-shadow:0 10px 25px rgba(0,0,0,0.5); font-family: sans-serif;';
-                
-                modal.innerHTML = `
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid #ccc; padding-bottom:10px;">
-                        <h3 style="margin:0;"><i class="fa-solid fa-folder-tree" style="color:#3fa9f5;"></i> Plugins Folder Explorer</h3>
-                        <button id="close-explorer" style="background:none; border:none; font-size:24px; cursor:pointer; padding:0; width:auto;">&times;</button>
-                    </div>
-                    <div id="explorer-path" style="font-family:monospace; font-size:12px; background:#f4f4f4; padding:8px; margin-bottom:10px; border-radius:4px; border-left:3px solid #3fa9f5; color:#333;">plugins/</div>
-                    <div id="explorer-content" style="flex-grow:1; overflow-y:auto; border:1px solid #ddd; border-radius:4px; background:#fff;">
-                        <ul style="list-style:none; padding:0; margin:0;"></ul>
-                    </div>
-                `;
-
-                overlay.appendChild(modal);
-                document.body.appendChild(overlay);
-
-                modal.querySelector('#close-explorer').onclick = () => overlay.remove();
-
-                const loadDir = async (path) => {
-                    const pathEl = modal.querySelector('#explorer-path');
-                    pathEl.textContent = 'plugins/' + path;
-                    const contentUl = modal.querySelector('#explorer-content ul');
-                    contentUl.innerHTML = '<li style="padding:15px; color:#666;"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading...</li>';
-
-                    try {
-                        const res = await fetch(`/plugins/Updater/list-dir?path=${encodeURIComponent(path)}`);
-                        if (!res.ok) throw new Error();
-                        const items = await res.json();
-                        contentUl.innerHTML = '';
-                        if (path) {
-                            const parentPath = path.split('/').filter(x => x).slice(0, -1).join('/');
-                            const li = document.createElement('li');
-                            li.style.cssText = 'padding:10px 15px; cursor:pointer; border-bottom:1px solid #eee; display:flex; align-items:center; gap:10px; color:#3fa9f5; font-weight:bold; background:#fcfcfc;';
-                            li.innerHTML = `<i class="fa-solid fa-level-up-alt" style="transform: rotate(-90deg);"></i> .. [Parent Directory]`;
-                            li.onclick = () => loadDir(parentPath);
-                            contentUl.appendChild(li);
-                        }
-                        if (items.length === 0) contentUl.innerHTML += '<li style="padding:20px; color:#999; font-style:italic; text-align:center;">Empty directory.</li>';
-                        items.sort((a, b) => (b.isDir - a.isDir) || a.name.localeCompare(b.name)).forEach(item => {
-                            const li = document.createElement('li');
-                            li.style.cssText = 'padding:10px 15px; cursor:pointer; border-bottom:1px solid #eee; display:flex; align-items:center; gap:12px; transition: background 0.1s; color:#333;';
-                            li.onmouseover = () => li.style.background = '#f5faff';
-                            li.onmouseout = () => li.style.background = 'transparent';
-                            const icon = item.isDir ? 'fa-folder' : 'fa-file-lines';
-                            const color = item.isDir ? '#ffcc00' : '#888';
-                            li.innerHTML = `<i class="fa-solid ${icon}" style="color:${color}; width:18px; text-align:center; font-size:16px;"></i> <span style="font-size:13px;">${item.name}</span>`;
-                            if (item.isDir) {
-                                li.onclick = () => loadDir(path ? `${path}/${item.name}` : item.name);
-                            } else {
-                                li.onclick = async () => {
-                                    const fileName = path ? `${path}/${item.name}` : item.name;
-                                    try {
-                                        const fileRes = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent(fileName)}`);
-                                        if (!fileRes.ok) throw new Error();
-                                        openViewFileModal(item.name, await fileRes.text(), [], [], 'plugins/' + fileName);
-                                    } catch (e) { alert("Error reading file."); }
-                                };
-                            }
-                            contentUl.appendChild(li);
-                        });
-                    } catch (e) { contentUl.innerHTML = '<li style="color:#fe0830; padding:20px; text-align:center;">Failed to load.</li>'; }
-                };
-                loadDir(initialPath);
-            }
-
-            function openViewFileModal(fileName, content, downloadedFiles = [], notDownloadedFiles = [], fullPath = '', repoUrl = '') {
+            function openViewFileModal(fileName, content, downloadedFiles = [], notDownloadedFiles = [], fullPath = '', repoUrl = '', descriptorUrl = '', initialRoot = 'plugins') {
                 const textExtensions = ['.js', '.json', '.css', '.html', '.txt', '.md', '.py', '.sh', '.xml', '.yaml', '.yml', '.ini', '.conf'];
                 const isTextFile = (name) => textExtensions.some(ext => name.toLowerCase().endsWith(ext));
-
-                // Helper to convert GitHub-style paths (e.g. plugins/Name/file.js) to local relative paths (Name/file.js)
+                let originalContent = content || '';
+                let currentRoot = initialRoot || 'plugins'; 
                 const getLocalPath = (p) => p.startsWith('plugins/') ? p.substring(8) : p;
 
                 const overlay = document.createElement('div');
                 overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:100000; display:flex; align-items:center; justify-content:center; color:#000;';
                 
                 const modal = document.createElement('div');
-                modal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:85%; max-width:1000px; height:85vh; display:flex; flex-direction:column; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
-                
+                modal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:95%; max-width:1200px; height:90vh; display:flex; flex-direction:column; box-shadow:0 10px 25px rgba(0,0,0,0.5); color:#333;';
+
+                const rootLabel = initialRoot === 'configs' ? 'configs' : 'plugins';
                 const header = document.createElement('div');
                 header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #ccc; padding-bottom:5px;';
-
-                header.insertAdjacentHTML('beforeend', `<h3 style="margin:0;">Local File: <span class="sc-view-filename" style="color:#00ff00;">${fileName}</span></h3>`);
-
+                header.insertAdjacentHTML('beforeend', `<h3 style="margin:0;"><i class="fa-solid fa-magnifying-glass" style="color:#3fa9f5;"></i> Explore [${rootLabel}]: <span class="sc-view-filename" style="color:#00ff00;">${fileName || 'Select a file'}</span></h3>`);
+                
                 const closeBtn = document.createElement('button');
                 closeBtn.textContent = '×';
                 closeBtn.style.cssText = 'background:none; border:none; padding:0; cursor:pointer; font-weight:bold; font-size:24px; line-height:1; width:auto;';
                 closeBtn.onclick = () => overlay.remove();
-
                 header.appendChild(closeBtn);
                 modal.appendChild(header);
 
-                let pathInfo = null;
-                if (repoUrl) {
-                    const repoLinkDiv = document.createElement('div');
-                    repoLinkDiv.style.cssText = 'font-size: 11px; color: #777; margin-bottom: 8px; font-family: monospace; word-break: break-all; background: #f4f4f4; padding: 6px 10px; border-left: 3px solid #00ccff;';
-                    repoLinkDiv.innerHTML = `<strong>Repository:</strong> <a href="${repoUrl}" target="_blank" style="color:#0066cc; text-decoration:underline;">${repoUrl}</a>`;
-                    modal.appendChild(repoLinkDiv);
-                }
+                const mainArea = document.createElement('div');
+                mainArea.style.cssText = 'display:flex; flex-grow:1; gap:20px; overflow:hidden;';
+                modal.appendChild(mainArea);
 
-                // Calculate the base plugin directory starting from the descriptor path
-                const basePluginsDir = (fullPath && fileName) ? fullPath.substring(0, fullPath.length - fileName.length) : '';
+                const sidebar = document.createElement('div');
+                sidebar.style.cssText = 'flex: 0 0 300px; display:flex; flex-direction:column; border-right:1px solid #eee; padding-right:15px; overflow-y:auto;';
+                mainArea.appendChild(sidebar);
 
-                if (fullPath) {
-                    pathInfo = document.createElement('div');
-                    pathInfo.style.cssText = 'font-size: 11px; color: #777; margin-bottom: 12px; font-family: monospace; word-break: break-all; background: #f4f4f4; padding: 6px 10px; border-left: 3px solid #00ff00;';
-                    pathInfo.innerHTML = `<strong>Full Path:</strong> <span class="sc-view-fullpath">${fullPath}</span>`;
-                }
+                const editorArea = document.createElement('div');
+                editorArea.style.cssText = 'flex-grow:1; display:flex; flex-direction:column; overflow:hidden;';
+                mainArea.appendChild(editorArea);
+
+                const infoContainer = document.createElement('div');
+                editorArea.appendChild(infoContainer);
+
+                const updateInfo = (fName, fPath, rUrl, dUrl) => {
+                    infoContainer.innerHTML = '';
+                    if (rUrl) {
+                        const div = document.createElement('div');
+                        div.style.cssText = 'font-size: 11px; color: #777; margin-bottom: 5px; font-family: monospace; background: #f4f4f4; padding: 4px 8px; border-left: 3px solid #00ccff;';
+                        div.innerHTML = `<strong>Repo:</strong> <a href="${rUrl}" target="_blank" style="color:#0066cc;">${rUrl}</a>`;
+                        infoContainer.appendChild(div);
+                    }
+                    if (dUrl) {
+                        const div = document.createElement('div');
+                        div.style.cssText = 'font-size: 11px; color: #777; margin-bottom: 5px; font-family: monospace; background: #f4f4f4; padding: 4px 8px; border-left: 3px solid #3fa9f5;';
+                        div.innerHTML = `<strong>GitHub File:</strong> <a href="${dUrl}" target="_blank" style="color:#0066cc;">${dUrl}</a>`;
+                        infoContainer.appendChild(div);
+                    }
+                    if (fPath) {
+                        const div = document.createElement('div');
+                        div.style.cssText = 'font-size: 11px; color: #777; margin-bottom: 10px; font-family: monospace; background: #f4f4f4; padding: 4px 8px; border-left: 3px solid #00ff00;';
+                        div.innerHTML = `<strong>Local:</strong> ${fPath}`;
+                        infoContainer.appendChild(div);
+                    }
+                };
+                updateInfo(fileName, fullPath, repoUrl, descriptorUrl);
 
                 const codeArea = document.createElement('textarea');
-                codeArea.readOnly = true;
+                codeArea.readOnly = true; // Default to read-only
                 codeArea.style.cssText = 'flex-grow:1; width:100%; font-family:monospace; font-size:12px; padding:10px; border:1px solid #ddd; border-radius:4px; white-space:pre; overflow:auto; background:#f9f9f9; resize:none; color:#333;';
                 
-                if (isTextFile(fileName)) {
+                if (!fileName) {
+                    codeArea.value = 'Select a file from the explorer to view its content.';
+                } else if (isTextFile(fileName)) {
                     codeArea.value = content;
                 } else {
                     codeArea.value = `[INFO] The file "${fileName}" is in a non-textual format and cannot be displayed here.`;
                     codeArea.style.color = "#777";
                 }
+                editorArea.appendChild(codeArea);
 
                 const loadFileContent = async (targetFile) => {
-                    codeArea.style.color = "#333"; // Reset to default text color
+                    codeArea.style.color = "#333";
                     codeArea.value = `Loading ${targetFile}...`;
                     const nameSpan = header.querySelector('.sc-view-filename');
                     if (nameSpan) nameSpan.textContent = targetFile;
                     
-                    // Update the full path displayed for the selected subfile
-                    if (pathInfo && basePluginsDir) {
-                        const fullPathSpan = pathInfo.querySelector('.sc-view-fullpath');
-                        if (fullPathSpan) {
-                            const separator = basePluginsDir.includes('\\') ? '\\' : '/';
-                            fullPathSpan.textContent = basePluginsDir + targetFile.replace(/[\/\\]/g, separator);
-                        }
-                    }
-                    
                     if (!isTextFile(targetFile)) {
-                        codeArea.value = `[INFO] The file "${targetFile}" is in a non-textual format and cannot be displayed here.`;
+                        codeArea.value = `[INFO] File "${targetFile}" is non-textual.`;
                         codeArea.style.color = "#777";
                         return;
                     }
-
                     try {
-                        const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent(targetFile)}`);
+                        const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent(targetFile)}&root=${currentRoot}`);
                         if (!res.ok) throw new Error();
-                        codeArea.value = await res.text();
-                    } catch (e) {
-                        codeArea.value = "Error: Could not read the file content.";
-                    }
+                        const fetchedText = await res.text();
+                        codeArea.value = fetchedText;
+                        originalContent = fetchedText;
+                        updateInfo(targetFile, (currentRoot === 'configs' ? 'plugins_configs/' : 'plugins/') + targetFile, '', ''); 
+                    } catch (e) { codeArea.value = "Error reading file."; }
+                    
+                    codeArea.readOnly = true;
+                    codeArea.style.borderColor = '#ddd';
+                    enableEditBtn.style.display = 'block';
+                    deleteFileBtn.style.display = 'block';
+                    saveBtnContainer.style.display = 'none';
                 };
 
-                if (downloadedFiles && downloadedFiles.length > 0) {
-                    const filesHeader = document.createElement('div');
-                    filesHeader.style.cssText = 'font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #555;';
-                    filesHeader.textContent = 'Downloaded files in last update (click to view):';
-                    modal.appendChild(filesHeader);
-                    
-                    const filesList = document.createElement('div');
-                    filesList.style.cssText = 'font-size: 11px; color: #666; background: #f5f5f5; padding: 8px; border-radius: 4px; margin-bottom: 15px; border-left: 3px solid #00ff00; max-height: 100px; overflow-y: auto;';
-                    
+                const createExplorerSection = (label, root) => {
+                    const btn = document.createElement('div');
+                    btn.style.cssText = 'padding:10px; cursor:pointer; background:#eee; border-radius:4px; font-weight:bold; display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; color:#333; font-size:13px;';
+                    btn.innerHTML = `<span><i class="fa-solid fa-folder-open" style="color:#ffcc00; margin-right:8px;"></i>${label}</span><i class="fa-solid fa-chevron-down"></i>`;
+                    sidebar.appendChild(btn);
+
+                    const container = document.createElement('div');
+                    container.style.display = 'none';
+                    sidebar.appendChild(container);
+
+                    btn.onclick = () => {
+                        const isHidden = container.style.display === 'none';
+                        container.style.display = isHidden ? 'block' : 'none';
+                        const icon = btn.querySelector('.fa-chevron-down, .fa-chevron-up');
+                        if (icon) icon.className = isHidden ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down';
+                        if (isHidden && container.innerHTML === '') loadDir('', container, root);
+                    };
+                    return { btn, container };
+                };
+
+                const loadDir = async (path, container, root) => {
+                    currentRoot = root;
+                    container.innerHTML = path ? `<div style="padding:8px 10px; font-size:12px; color:#3fa9f5; font-weight:bold; background:#f8f8f8; margin-bottom:5px; border-radius:4px; border-left:3px solid #3fa9f5;">${path}</div>` : '';
                     const ul = document.createElement('ul');
-                    ul.style.cssText = 'margin:0; padding-left:20px;';
+                    ul.style.cssText = 'list-style:none; padding:0; margin:0; font-size:13px;';
+                    container.appendChild(ul);
+
+                    if (path) {
+                        const li = document.createElement('li');
+                        li.style.cssText = 'padding:5px; cursor:pointer; color:#3fa9f5; font-weight:bold;';
+                        li.innerHTML = `<i class="fa-solid fa-arrow-left"></i> .. [Back]`;
+                        li.onclick = () => loadDir(path.split('/').filter(x=>x).slice(0,-1).join('/'), container, root);
+                        ul.appendChild(li);
+                    }
+
+                    try {
+                        const res = await fetch(`/plugins/Updater/list-dir?path=${encodeURIComponent(path)}&root=${root}`);
+                        const items = await res.json();
+                        items.sort((a,b) => (b.isDir - a.isDir) || a.name.localeCompare(b.name)).forEach(item => {
+                            const li = document.createElement('li');
+                            li.style.cssText = 'padding:6px; cursor:pointer; border-bottom:1px solid #f9f9f9; display:flex; align-items:center; gap:8px;';
+                            const icon = item.isDir ? 'fa-folder' : 'fa-file-code';
+                            li.innerHTML = `<i class="fa-solid ${icon}" style="color:${item.isDir ? '#ffcc00' : '#888'};"></i> ${item.name}`;
+                            li.onclick = () => item.isDir ? loadDir(path ? `${path}/${item.name}` : item.name, container, root) : loadFileContent(path ? `${path}/${item.name}` : item.name, root);
+                            ul.appendChild(li);
+                        });
+                    } catch(e) {}
+                };
+
+                const pluginsSection = createExplorerSection('plugins', 'plugins');
+                const configsSection = createExplorerSection('plugins_configs', 'configs');
+
+                if (downloadedFiles && downloadedFiles.length > 0) {
+                    const metaDiv = document.createElement('div');
+                    metaDiv.style.cssText = 'margin-bottom:15px; background:#f0fff0; border:1px solid #c2e0c2; border-radius:4px; padding:10px;';
+                    metaDiv.innerHTML = `<div style="font-weight:bold; font-size:11px; color:#2d5a2d; margin-bottom:5px;">UPDATE RESULTS:</div>`;
+                    const metaUl = document.createElement('ul');
+                    metaUl.style.cssText = 'list-style:none; padding:0; margin:0; font-size:11px;';
                     downloadedFiles.forEach(f => {
                         const localF = getLocalPath(f);
                         const li = document.createElement('li');
+                        li.style.cssText = 'color:#0066cc; cursor:pointer; text-decoration:underline; margin-bottom:2px;';
                         li.textContent = localF;
-                        li.style.cssText = 'cursor: pointer; color: #0066cc; text-decoration: underline; margin-bottom: 2px;';
-                        li.onmouseover = () => li.style.color = '#fe0830';
-                        li.onmouseout = () => li.style.color = '#0066cc';
                         li.onclick = () => loadFileContent(localF);
-                        ul.appendChild(li);
+                        metaUl.appendChild(li);
                     });
-                    filesList.appendChild(ul);
-                    modal.appendChild(filesList);
+                    metaDiv.appendChild(metaUl);
+                    sidebar.prepend(metaDiv);
                 }
 
+                // Show skipped files (files in the repo but not downloaded locally)
                 if (notDownloadedFiles && notDownloadedFiles.length > 0) {
-                    const skippedHeader = document.createElement('div');
-                    skippedHeader.style.cssText = 'font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #555;';
-                    skippedHeader.textContent = 'Skipped files (not downloaded):';
-                    modal.appendChild(skippedHeader);
-                    
-                    const skippedList = document.createElement('div');
-                    skippedList.style.cssText = 'font-size: 11px; color: #666; background: #fdf6e3; padding: 8px; border-radius: 4px; margin-bottom: 15px; border-left: 3px solid #ffaa00; max-height: 80px; overflow-y: auto;';
-                    
-                    const ul = document.createElement('ul');
-                    ul.style.cssText = 'margin:0; padding-left:20px;';
+                    const skipDiv = document.createElement('div');
+                    skipDiv.style.cssText = 'margin-bottom:15px; background:#fff8e1; border:1px solid #ffe082; border-radius:4px; padding:10px;';
+                    skipDiv.innerHTML = `<div style="font-weight:bold; font-size:11px; color:#856404; margin-bottom:5px;">SKIPPED (Not Downloaded):</div>`;
+                    const skipUl = document.createElement('ul');
+                    skipUl.style.cssText = 'list-style:none; padding:0; margin:0; font-size:11px; color:#666;';
                     notDownloadedFiles.forEach(f => {
                         const li = document.createElement('li');
+                        li.style.marginBottom = '2px';
                         li.textContent = f;
-                        ul.appendChild(li);
+                        skipUl.appendChild(li);
                     });
-                    skippedList.appendChild(ul);
-                    modal.appendChild(skippedList);
+                    skipDiv.appendChild(skipUl);
+                    sidebar.prepend(skipDiv);
                 }
 
-                modal.appendChild(codeArea);
+                // Detect the initial directory to browse based on the file's path
+                let initialDir = '';
+                if (fullPath) {
+                    const normalized = fullPath.replace(/\\/g, '/');
+                    const parts = normalized.split('/plugins/');
+                    if (parts.length > 1) initialDir = parts[1].split('/')[0];
+                }
+                const activeSection = initialRoot === 'configs' ? configsSection : pluginsSection;
+//         activeSection.btn.click();
+                if (initialDir && !initialDir.endsWith('.js')) {
+                    loadDir(initialDir, activeSection.container, initialRoot);
+                }
+
+                const footer = document.createElement('div');
+                footer.style.cssText = 'display:flex; justify-content:flex-end; margin-top:15px; gap:10px;';
+                editorArea.appendChild(footer);
+
+                const enableEditBtn = document.createElement('button');
+                enableEditBtn.innerHTML = '<i class="fa-solid fa-pencil"></i> Enable Editing';
+                enableEditBtn.title = "Unlock the editor to make manual changes to this file";
+                enableEditBtn.style.cssText = 'padding:8px 15px; border:none; background:#ffaa00; color:#fff; cursor:pointer; border-radius:4px; font-weight:bold;';
+                footer.appendChild(enableEditBtn);
+
+                const deleteFileBtn = document.createElement('button');
+                deleteFileBtn.innerHTML = '<i class="fa-solid fa-trash"></i> Delete File';
+                deleteFileBtn.title = "Permanently delete this file from the server";
+                deleteFileBtn.style.cssText = 'padding:8px 15px; border:none; background:#fe0830; color:#fff; cursor:pointer; border-radius:4px; font-weight:bold;';
+                deleteFileBtn.style.display = fileName ? 'block' : 'none';
+                footer.appendChild(deleteFileBtn);
+
+                const saveBtnContainer = document.createElement('div');
+                saveBtnContainer.style.cssText = 'display:none; gap:10px;';
+                footer.appendChild(saveBtnContainer);
+                
+                const discardBtn = document.createElement('button');
+                discardBtn.innerHTML = '<i class="fa-solid fa-rotate-left"></i> Discard';
+                discardBtn.title = "Cancel all unsaved changes and return to read-only mode";
+                discardBtn.style.cssText = 'padding:8px 15px; border:1px solid #ddd; background:#eee; color:#333; cursor:pointer; border-radius:4px; font-weight:bold;';
+                saveBtnContainer.appendChild(discardBtn);
+
+                const saveBtn = document.createElement('button');
+                saveBtn.innerHTML = '<i class="fa-solid fa-save"></i> Save Changes';
+                saveBtn.title = "Apply and save changes to the server";
+                saveBtn.style.cssText = 'padding:8px 15px; border:none; background:#3fa9f5; color:#fff; cursor:pointer; border-radius:4px; font-weight:bold;';
+                saveBtnContainer.appendChild(saveBtn);
+
+                enableEditBtn.onclick = () => {
+                    const currentFile = header.querySelector('.sc-view-filename').textContent;
+                    if (!currentFile || currentFile === 'Select a file') return alert("Please select a file to edit first.");
+                    if (!isTextFile(currentFile)) return alert("This file type is not editable.");
+
+                    if (confirm("WARNING: Editing directly can break the plugin. Continue?")) {
+                        codeArea.readOnly = false;
+                        codeArea.style.borderColor = '#00ff00';
+                        enableEditBtn.style.display = 'none';
+                        deleteFileBtn.style.display = 'none';
+                        saveBtnContainer.style.display = 'flex';
+                    }
+                };
+
+                deleteFileBtn.onclick = async () => {
+                    const currentFile = header.querySelector('.sc-view-filename').textContent;
+                    if (!currentFile || currentFile === 'Select a file') return alert("Please select a file to delete first.");
+                    
+                    if (confirm(`Are you sure you want to delete the file "${currentFile}"?\n\nThis action cannot be undone.`)) {
+                        try {
+                            const res = await fetch('/plugins/Updater/delete-file', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ fileName: currentFile, root: currentRoot })
+                            });
+                            if (res.ok) {
+                                alert(`File "${currentFile}" deleted successfully.`);
+
+                                // Refresh the sidebar list
+                                const parentPath = currentFile.includes('/') ? currentFile.substring(0, currentFile.lastIndexOf('/')) : '';
+                                const activeContainer = currentRoot === 'configs' ? configsSection.container : pluginsSection.container;
+                                loadDir(parentPath, activeContainer, currentRoot);
+
+                                // Reset viewer
+                                codeArea.value = 'Select a file from the explorer to view its content.';
+                                header.querySelector('.sc-view-filename').textContent = 'Select a file';
+                                deleteFileBtn.style.display = 'none';
+                                enableEditBtn.style.display = 'none';
+                                saveBtnContainer.style.display = 'none';
+                            } else {
+                                const errText = await res.text();
+                                alert('Error deleting file: ' + errText);
+                            }
+                        } catch (e) { alert('Connection error.'); }
+                    }
+                };
+
+                discardBtn.onclick = () => {
+                    if (confirm("Discard changes?")) {
+                        codeArea.value = originalContent;
+                        codeArea.readOnly = true;
+                        codeArea.style.borderColor = '#ddd';
+                        enableEditBtn.style.display = 'block';
+                        deleteFileBtn.style.display = 'block';
+                        saveBtnContainer.style.display = 'none';
+                    }
+                };
+
+                saveBtn.onclick = async () => {
+                    saveBtn.disabled = true;
+                    try {
+                        const currentFile = header.querySelector('.sc-view-filename').textContent;
+                        const res = await fetch('/plugins/Updater/save-file', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ fileName: currentFile, content: codeArea.value, root: currentRoot })
+                        });
+                        if (res.ok) {
+                            alert('File saved!');
+                            originalContent = codeArea.value;
+                            codeArea.readOnly = true;
+                            codeArea.style.borderColor = '#ddd';
+                            enableEditBtn.style.display = 'block';
+                            deleteFileBtn.style.display = 'block';
+                            saveBtnContainer.style.display = 'none';
+                        }
+                    } catch (e) { alert('Error saving.'); } finally { saveBtn.disabled = false; }
+                };
+
                 overlay.appendChild(modal);
                 document.body.appendChild(overlay);
             }
@@ -1227,11 +1346,11 @@
                 li.innerHTML = `
                     <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden;">
                         <div class="updater-title" style="flex: 0 0 25%; color: #3fa9f5; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${p.fullPath || ''}">${p.name || 'Unknown'}</div>
-                        <div class="updater-subtitle" style="flex: 0 0 10%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                            v<span class="${p.isNew ? '' : 'updater-version-view'}" style="color: #fff; ${p.isNew ? '' : 'cursor: pointer; text-decoration: underline;'}">${p.version || '??'}</span>
-                        </div>
                         <div class="updater-subtitle" style="flex: 0 0 20%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                             ${p.author || 'Unknown'}
+                        </div>
+                        <div class="updater-subtitle" style="flex: 0 0 10%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            v<span style="color: #fff;">${p.version || '??'}</span>
                         </div>
                         <div id="status-${p.name.replace(/\s+/g, '_')}" style="flex: 1; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                             <span style="color: #666; font-style: italic;">Checking...</span>
@@ -1239,27 +1358,39 @@
                     </div>
                     <div style="width: 160px; flex-shrink: 0; margin-left: 10px; display: flex; justify-content: flex-end;">
                         <div class="actions-container" style="display: flex; gap: 4px; align-items: center;">
-                            <button class="updater-btn updater-btn-small updater-edit-btn" style="background:#444; color:#fff;">Edit</button>
-                            <button class="updater-btn updater-btn-small updater-delete-btn" style="background:#444; color:#fff;">Delete</button>
+                            <button class="updater-btn updater-btn-small updater-edit-btn" style="background:#444; color:#fff;" title="Modify GitHub repository, file paths, or local directory for this plugin">Edit</button>
+                            <button class="updater-btn updater-btn-small updater-explore-btn" style="background:#444; color:#fff;" title="Browse and manage plugin files, view code, or edit configurations">Explore</button>
+                            <button class="updater-btn updater-btn-small updater-delete-btn" style="background:#444; color:#fff;" title="Completely remove this plugin and its files from the server">Delete</button>
                         </div>
                     </div>
                 `;
 
                 li.querySelector('.updater-edit-btn').onclick = () => openEditModal(p, currentPlugins);
                 
-                const versionView = li.querySelector('.updater-version-view');
-                if (versionView) {
-                    versionView.onclick = async () => {
-                        try {
-                            const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent(p.fileName)}`);
-                            if (!res.ok) throw new Error('File read failed');
-                            const content = await res.text();
-                            openViewFileModal(p.fileName, content, p.downloadedFiles, p.notDownloadedFiles, p.fullPath, p.repoUrl);
-                        } catch (e) {
-                            alert("Error: Could not read the local descriptor file.");
+                // Action to read and view the local file content
+                const viewFileAction = async () => {
+                    try {
+                        const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent(p.fileName)}`);
+                        if (!res.ok) throw new Error('File read failed');
+                        const content = await res.text();
+                        
+                        // Calculate remote descriptor URL for reference
+                        const owner = resolveOwner(p, currentPlugins);
+                        let repo = p.name.replace(/\s+/g, '-');
+                        if (p.repoUrl) {
+                            const match = p.repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)/);
+                            if (match) repo = match[2];
                         }
-                    };
-                }
+                        const filePath = p.fileUrl || p.fileName;
+                        const descriptorUrl = filePath.startsWith('http') ? filePath : `https://github.com/${owner}/${repo}/blob/main/${filePath}`;
+
+                        openViewFileModal(p.fileName, content, p.downloadedFiles, p.notDownloadedFiles, p.fullPath, p.repoUrl, descriptorUrl);
+                    } catch (e) {
+                        alert("Error: Could not read the local descriptor file.");
+                    }
+                };
+
+                li.querySelector('.updater-explore-btn').onclick = viewFileAction;
 
                 const delBtn = li.querySelector('.updater-delete-btn');
                 if (delBtn) delBtn.onclick = () => performDelete(p);
@@ -1315,6 +1446,19 @@
             const response = await fetch('/plugins/Updater/list?t=' + Date.now());
             if (!response.ok) throw new Error('Fetch error');
             currentPlugins = await response.json();
+
+            // Verifica discordanza versione (Cache Detection)
+            const selfInfo = currentPlugins.find(p => p.name === 'Updater');
+            if (selfInfo && selfInfo.version !== pluginVersion) {
+                console.warn(`[Updater] Cache Mismatch! Browser: ${pluginVersion}, Server: ${selfInfo.version}`);
+                const cacheWarning = document.createElement('div');
+                cacheWarning.id = 'updater-cache-warning';
+                cacheWarning.style.cssText = 'background: #fe0830; color: #fff; padding: 10px; margin-bottom: 15px; border-radius: 6px; font-size: 13px; text-align: center; font-weight: bold; border: 2px solid #fff;';
+                cacheWarning.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ATTENZIONE: Il browser sta usando una versione obsoleta in cache (v${pluginVersion}).<br>La versione corretta è v${selfInfo.version}. Premi <b>CTRL + F5</b> per aggiornare.`;
+                const listBody = document.getElementById('updater-list-body');
+                if (listBody) listBody.parentNode.insertBefore(cacheWarning, listBody);
+            }
+
             const status = document.getElementById('updater-status');
             if (currentPlugins.length === 0) {
                 status.textContent = "No valid plugin descriptors found.";
