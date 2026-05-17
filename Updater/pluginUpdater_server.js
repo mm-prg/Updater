@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.0.7)
+ * Updater Plugin for FM-DX Webserver (v. 0.0.7b)
  * ************************************************
  */
 
@@ -47,8 +47,9 @@ function readJsonFile(filePath) {
 function loadOverrides() { // Data in new_data.json overrides static data from pl_data.json
     const staticData = readJsonFile(staticPath);
     const dynamicData = readJsonFile(overridesPath);
-    // Data in new_data.json overrides static data from pl_data.json
-    return { ...staticData, ...dynamicData };
+    const merged = { ...staticData, ...dynamicData };
+    // Filter out plugins explicitly marked as null (deleted)
+    return Object.fromEntries(Object.entries(merged).filter(([_, v]) => v !== null));
 }
 
 /**
@@ -59,10 +60,17 @@ function saveOverrides(overrides) { // Store in new_data.json only if data diffe
         const staticData = readJsonFile(staticPath);
         const toSave = {};
 
-        // Store in new_data.json only if data differs from static ones in pl_data.json
+        // Save entries that are new or different from the static baseline
         for (const [name, data] of Object.entries(overrides)) {
             if (JSON.stringify(staticData[name]) !== JSON.stringify(data)) {
                 toSave[name] = data;
+            }
+        }
+
+        // Record deletions: if it was in static data but is now gone from the object, mark it as null
+        for (const name of Object.keys(staticData)) {
+            if (!(name in overrides)) {
+                toSave[name] = null;
             }
         }
 
@@ -300,6 +308,32 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json(), async (re
 });
 
 /**
+ * Endpoint to list contents of a directory within the plugins folder
+ */
+endpointsRouter.get('/plugins/Updater/list-dir', (req, res) => {
+    const relativePath = req.query.path || '';
+    const absolutePath = path.join(pluginsDir, relativePath);
+    
+    // Security: check that the path is inside the plugins folder
+    if (!absolutePath.startsWith(pluginsDir)) {
+        return res.status(403).send('Access denied');
+    }
+
+    try {
+        if (!fs.existsSync(absolutePath)) return res.json([]);
+        const entries = fs.readdirSync(absolutePath, { withFileTypes: true });
+        const list = entries.map(entry => ({
+            name: entry.name,
+            isDir: entry.isDirectory()
+        }));
+        res.json(list);
+    } catch (e) {
+        logError(`[Updater] Error listing directory ${relativePath}:`, e);
+        res.status(500).send('Error reading directory');
+    }
+});
+
+/**
  * Endpoint to read local descriptor file content // Security: check that the file is inside the plugins folder
  */
 
@@ -350,6 +384,14 @@ endpointsRouter.post('/plugins/Updater/delete-plugin', express.json(), (req, res
                 fs.rmSync(dirPath, { recursive: true, force: true });
                 logInfo(`[Updater] Deleted directory: ${dirPath}`);
             }
+        }
+
+        // Step 3: Remove the plugin's entry from new_data.json
+        const overrides = loadOverrides();
+        if (overrides[pluginName]) {
+            delete overrides[pluginName];
+            saveOverrides(overrides); // This will save the modified overrides (without the deleted plugin) to new_data.json
+            logInfo(`[Updater] Removed entry for ${pluginName} from new_data.json`);
         }
 
         // Return success confirmation to the client

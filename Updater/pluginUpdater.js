@@ -7,7 +7,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.0.7';
+    const pluginVersion = '0.0.7b';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
 
@@ -115,12 +115,31 @@
 
         if (document.getElementById(pluginId)) return;
 
+        // Inject native styles as a fallback and for specific overrides
+        const styleBlock = document.createElement('style');
+        styleBlock.textContent = `
+            .updater-card { background: #222; padding: 15px; border-radius: 6px; border: 1px solid #333; margin-bottom: 20px; color: #ddd; }
+            .updater-list { list-style: none; padding: 0; margin: 0; }
+            .updater-list-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-left: 3px solid #3fa9f5; background: #1a1a1a; margin-bottom: 8px; border-radius: 4px; color: #ddd; transition: background 0.2s; }
+            .updater-list-item:hover { background: #262626; }
+            .updater-btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; transition: opacity 0.2s; }
+            .updater-btn:hover { opacity: 0.8; }
+            .updater-btn-primary { background: #3fa9f5; color: #000; }
+            .updater-btn-danger { background: #fe0830; color: #fff; }
+            .updater-btn-small { padding: 4px 8px; font-size: 10px; }
+            .updater-title { color: #fff; margin: 0; font-size: 1.2em; font-weight: bold; }
+            .updater-subtitle { color: #aaa; font-size: 0.85em; margin-top: 2px; }
+            .updater-sort-link { color: #3fa9f5; cursor: pointer; text-decoration: none; font-size: 11px; margin-right: 10px; }
+            .updater-sort-link:hover { text-decoration: underline; }
+        `;
+        document.head.appendChild(styleBlock);
+
         const container = document.createElement('div');
         container.id = pluginId;
+        container.className = 'card updater-card';
 
         // Define different styles depending on the page
         if (isOnSetupPage) {
-            // Integrated style for the SETUP page
             container.style.cssText = `
                 margin: 20px 0;
                 padding: 15px;
@@ -132,7 +151,6 @@
                 box-shadow: 0 4px 15px rgba(0,0,0,0.5);
             `;
         } else {
-            // MODAL style (centered) for the MAIN page
             container.style.cssText = `
                 margin: 0;
                 padding: 15px;
@@ -156,31 +174,29 @@
         }
 
         container.innerHTML = `
-            <div style="border-bottom: 2px solid #00ff00; padding-bottom: 10px; margin-bottom: 15px;">
-                <h2 style="margin: 0; color: #00ff00; line-height: 1.2; text-align: center; font-size: 1.8em; text-transform: uppercase; font-weight: normal; letter-spacing: 1px;">Installed Plugins</h2>
-                <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.9em; justify-content: flex-start;">
-                    <button id="updater-options-btn" style="background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px 0; width: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center;" title="Options"><i class="fa-solid fa-gear"></i></button>
-                    <div style="color: #aaa; font-weight: bold;">(Updater ${pluginVersion})</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px;">
+                <h3 class="updater-title">Installed Plugins</h3>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <button id="updater-options-btn" class="updater-btn" style="background:#333; color:#fff;" title="Options"><i class="fa-solid fa-gear"></i></button>
+                    <span style="color: #777; font-size: 11px;">v${pluginVersion}</span>
                 </div>
             </div>
-            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 12px; padding: 0 5px;">
-                <div id="updater-status" style="font-size: 0.9em; color: #00ccff; font-weight: bold;">Scanning files...</div>
-                <button id="add-plugin-btn" style="background: #00ccff; color: #000; border: none; border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 11px; font-weight: bold; width: fit-content; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">Add new plugin</button>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <div id="updater-status" class="updater-subtitle" style="color: #3fa9f5; font-weight: bold;">Scanning...</div>
+                <button id="add-plugin-btn" class="updater-btn updater-btn-primary" style="width: fit-content;">Add new plugin</button>
             </div>
-            <div style="overflow-x: auto;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
-                    <thead id="updater-table-head">
-                        <tr style="border-bottom: 2px solid #555; color: #ccc;">
-                            <th style="padding: 10px; cursor: pointer; user-select: none;" data-sort="name">Plugin Name ↕</th>
-                            <th style="padding: 10px; cursor: pointer; user-select: none;" data-sort="version">Version ↕</th>
-                            <th style="padding: 10px; cursor: pointer; user-select: none;" data-sort="author">Author ↕</th>
-                            <th style="padding: 10px; cursor: pointer; user-select: none;" data-sort="status">Status ↕</th>
-                            <th style="padding: 10px;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="updater-list-body"></tbody>
-                </table>
+            
+            <div id="updater-sort-controls" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 0 12px; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #222; padding-bottom: 5px; opacity: 0.8; border-left: 3px solid transparent;">
+                <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px;">
+                    <span class="updater-sort-link" data-sort="name" style="flex: 0 0 25%;">Name ↕</span>
+                    <span class="updater-sort-link" data-sort="version" style="flex: 0 0 10%;">Ver ↕</span>
+                    <span class="updater-sort-link" data-sort="author" style="flex: 0 0 20%;">Author ↕</span>
+                    <span class="updater-sort-link" data-sort="status" style="flex: 1;">Status ↕</span>
+                </div>
+                <div style="width: 160px; flex-shrink: 0; margin-left: 10px;"></div>
             </div>
+
+            <ul id="updater-list-body" class="updater-list"></ul>
         `;
 
         // Insertion into the Webserver UI
@@ -334,34 +350,34 @@
                 if (!remoteVer) {
                     statusCell.innerHTML = `<span style="color: #ffaa00;">Repo not found</span>`;
                 } else {
-                    const viewLink = `<a href="${fullRepoUrl}" target="_blank" style="margin-left:5px; color:#00ccff; text-decoration:underline; font-size:10px;">View</a>`;
+                    const viewLink = `<a href="${fullRepoUrl}" target="_blank" style="margin-left:5px; color:#3fa9f5; text-decoration:underline; font-size:10px;">Repo</a>`;
                     
                     if (isNewer(p.version || "0.0.0", remoteVer)) {
                         statusCell.innerHTML = `<span style="color: #fe0830; font-weight: bold;">🚀 Update: ${remoteVer}</span> ${viewLink}`;
                     } else {
-                        statusCell.innerHTML = `<span style="color: #00ff00;">✓ Up to date</span> ${viewLink}`;
+                        statusCell.innerHTML = `<span style="color: #3fa9f5;">✓ Up to date</span> ${viewLink}`;
                     }
                 }
 
                 // Add the update button if available or reinstallation
                 if (remoteVer) {
-                    const actionsCell = statusCell.parentElement.querySelector('td:last-child');
-                    const actionsContainer = actionsCell.querySelector('.actions-container');
+                    const actionsContainer = statusCell.closest('li')?.querySelector('.actions-container');
                     if (actionsContainer) {
                         const isUpdate = isNewer(p.version || "0.0.0", remoteVer);
                         const btnClass = isUpdate ? 'updater-update-btn' : 'updater-reinstall-btn';
-                        
-                        if (!actionsContainer.querySelector(`.${btnClass}`)) {
-                            const otherBtn = actionsContainer.querySelector(isUpdate ? '.updater-reinstall-btn' : '.updater-update-btn');
-                            if (otherBtn) otherBtn.remove();
 
-                            const btn = document.createElement('button');
-                            btn.className = btnClass;
-                            btn.textContent = isUpdate ? 'Update' : 'Reinstall';
-                            btn.style.cssText = `background:${isUpdate ? '#fe0830' : '#444'}; color:#fff; border:none; border-radius:4px; padding:4px 6px; cursor:pointer; font-size:10px;`;
-                            btn.onclick = () => performUpdate(p);
-                            actionsContainer.prepend(btn);
-                        }
+                        // Rimuovi eventuali pulsanti esistenti per gestire correttamente il cambio di stato (es. da Update a Reinstall)
+                        const existingBtn = actionsContainer.querySelector('.updater-update-btn, .updater-reinstall-btn');
+                        if (existingBtn) existingBtn.remove();
+
+                        const btn = document.createElement('button');
+                        btn.className = `updater-btn updater-btn-small ${btnClass}`;
+                        btn.textContent = isUpdate ? 'Update' : 'Reinstall';
+                        btn.style.background = isUpdate ? '#fe0830' : '#444';
+                        btn.style.color = '#fff';
+                        btn.style.marginRight = '4px';
+                        btn.onclick = () => performUpdate(p);
+                        actionsContainer.prepend(btn);
                     }
                 }
             }
@@ -403,7 +419,7 @@
 
             async function refreshList() {
                 try {
-                    const response = await fetch('/plugins/Updater/list');
+                    const response = await fetch('/plugins/Updater/list?t=' + Date.now());
                     if (!response.ok) throw new Error();
                     const newList = await response.json();
 
@@ -920,7 +936,8 @@
                     </div>
                     <button id="opt-save" style="width:100%; padding:6px; border:none; background:#fe0830; color:#fff; cursor:pointer; border-radius:4px; font-size:11px; font-weight:bold; margin-bottom:15px;">SAVE SETTINGS</button>
                     <div style="border-top:1px solid #333; padding-top:12px;">
-                        <div style="margin-bottom:8px; font-weight:bold; color:#00ccff; font-size:11px; text-transform:uppercase;">Internal Files</div>
+                        <div style="margin-bottom:8px; font-weight:bold; color:#00ccff; font-size:11px; text-transform:uppercase;">Files & Explorer</div>
+                        <button id="browse-plugins-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-folder-tree"></i> Browse Plugins Folder</button>
                         <button id="view-new-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-file-code"></i> new_data.json</button>
                         <button id="view-pl-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-file-lines"></i> pl_data.json</button>
                     </div>
@@ -972,6 +989,10 @@
                         }
                     } catch (e) { alert("Connection error."); }
                 };
+                dropdown.querySelector('#browse-plugins-btn').onclick = () => {
+                    openFolderExplorerModal('');
+                    dropdown.remove();
+                };
                 dropdown.querySelector('#view-new-data-btn').onclick = async () => {
                     try {
                         const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent('Updater/new_data.json')}`);
@@ -988,6 +1009,76 @@
                         dropdown.remove();
                     } catch (e) { alert("Error reading file."); }
                 };
+            }
+
+            async function openFolderExplorerModal(initialPath = '') {
+                const overlay = document.createElement('div');
+                overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:100000; display:flex; align-items:center; justify-content:center; color:#000;';
+                
+                const modal = document.createElement('div');
+                modal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:85%; max-width:800px; height:80vh; display:flex; flex-direction:column; box-shadow:0 10px 25px rgba(0,0,0,0.5); font-family: sans-serif;';
+                
+                modal.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid #ccc; padding-bottom:10px;">
+                        <h3 style="margin:0;"><i class="fa-solid fa-folder-tree" style="color:#3fa9f5;"></i> Plugins Folder Explorer</h3>
+                        <button id="close-explorer" style="background:none; border:none; font-size:24px; cursor:pointer; padding:0; width:auto;">&times;</button>
+                    </div>
+                    <div id="explorer-path" style="font-family:monospace; font-size:12px; background:#f4f4f4; padding:8px; margin-bottom:10px; border-radius:4px; border-left:3px solid #3fa9f5; color:#333;">plugins/</div>
+                    <div id="explorer-content" style="flex-grow:1; overflow-y:auto; border:1px solid #ddd; border-radius:4px; background:#fff;">
+                        <ul style="list-style:none; padding:0; margin:0;"></ul>
+                    </div>
+                `;
+
+                overlay.appendChild(modal);
+                document.body.appendChild(overlay);
+
+                modal.querySelector('#close-explorer').onclick = () => overlay.remove();
+
+                const loadDir = async (path) => {
+                    const pathEl = modal.querySelector('#explorer-path');
+                    pathEl.textContent = 'plugins/' + path;
+                    const contentUl = modal.querySelector('#explorer-content ul');
+                    contentUl.innerHTML = '<li style="padding:15px; color:#666;"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading...</li>';
+
+                    try {
+                        const res = await fetch(`/plugins/Updater/list-dir?path=${encodeURIComponent(path)}`);
+                        if (!res.ok) throw new Error();
+                        const items = await res.json();
+                        contentUl.innerHTML = '';
+                        if (path) {
+                            const parentPath = path.split('/').filter(x => x).slice(0, -1).join('/');
+                            const li = document.createElement('li');
+                            li.style.cssText = 'padding:10px 15px; cursor:pointer; border-bottom:1px solid #eee; display:flex; align-items:center; gap:10px; color:#3fa9f5; font-weight:bold; background:#fcfcfc;';
+                            li.innerHTML = `<i class="fa-solid fa-level-up-alt" style="transform: rotate(-90deg);"></i> .. [Parent Directory]`;
+                            li.onclick = () => loadDir(parentPath);
+                            contentUl.appendChild(li);
+                        }
+                        if (items.length === 0) contentUl.innerHTML += '<li style="padding:20px; color:#999; font-style:italic; text-align:center;">Empty directory.</li>';
+                        items.sort((a, b) => (b.isDir - a.isDir) || a.name.localeCompare(b.name)).forEach(item => {
+                            const li = document.createElement('li');
+                            li.style.cssText = 'padding:10px 15px; cursor:pointer; border-bottom:1px solid #eee; display:flex; align-items:center; gap:12px; transition: background 0.1s; color:#333;';
+                            li.onmouseover = () => li.style.background = '#f5faff';
+                            li.onmouseout = () => li.style.background = 'transparent';
+                            const icon = item.isDir ? 'fa-folder' : 'fa-file-lines';
+                            const color = item.isDir ? '#ffcc00' : '#888';
+                            li.innerHTML = `<i class="fa-solid ${icon}" style="color:${color}; width:18px; text-align:center; font-size:16px;"></i> <span style="font-size:13px;">${item.name}</span>`;
+                            if (item.isDir) {
+                                li.onclick = () => loadDir(path ? `${path}/${item.name}` : item.name);
+                            } else {
+                                li.onclick = async () => {
+                                    const fileName = path ? `${path}/${item.name}` : item.name;
+                                    try {
+                                        const fileRes = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent(fileName)}`);
+                                        if (!fileRes.ok) throw new Error();
+                                        openViewFileModal(item.name, await fileRes.text(), [], [], 'plugins/' + fileName);
+                                    } catch (e) { alert("Error reading file."); }
+                                };
+                            }
+                            contentUl.appendChild(li);
+                        });
+                    } catch (e) { contentUl.innerHTML = '<li style="color:#fe0830; padding:20px; text-align:center;">Failed to load.</li>'; }
+                };
+                loadDir(initialPath);
             }
 
             function openViewFileModal(fileName, content, downloadedFiles = [], notDownloadedFiles = [], fullPath = '', repoUrl = '') {
@@ -1130,29 +1221,33 @@
             tbody.innerHTML = '';
 
             currentPlugins.forEach(p => {
-                const row = document.createElement('tr');
-                row.style.borderBottom = '1px solid #2a2a2a';
-                row.onmouseenter = () => row.style.backgroundColor = 'rgba(255,255,255,0.05)';
-                row.onmouseleave = () => row.style.backgroundColor = 'transparent';
+                const li = document.createElement('li');
+                li.className = 'updater-list-item';
                 
-                row.innerHTML = `
-                    <td style="padding: 10px; font-weight: bold; color: #00ccff;">${p.name || 'Unknown'}</td>
-                    <td style="padding: 10px;"><span class="${p.isNew ? '' : 'updater-version-view'}" style="background: #333; padding: 2px 6px; border-radius: 4px; ${p.isNew ? '' : 'cursor: pointer; text-decoration: underline;'}" title="${p.isNew ? '' : 'Click to view local file content'}">${p.version || '??'}</span></td>
-                    <td style="padding: 10px;">${p.author || '-'}</td>
-                    <td style="padding: 10px;" id="status-${p.name.replace(/\s+/g, '_')}">
-                        <span style="color: #666; font-style: italic;">Checking...</span>
-                    </td>
-                    <td style="padding: 10px;">
-                        <div class="actions-container" style="display: flex; gap: 4px; align-items: center;">
-                            <button class="updater-edit-btn" style="background:#444; color:#fff; border:none; border-radius:4px; padding:4px 6px; cursor:pointer; font-size:10px;">Edit</button>
-                            <button class="updater-delete-btn" style="background:#444; color:#fff; border:none; border-radius:4px; padding:4px 6px; cursor:pointer; font-size:10px;">Delete</button>
+                li.innerHTML = `
+                    <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden;">
+                        <div class="updater-title" style="flex: 0 0 25%; color: #3fa9f5; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${p.fullPath || ''}">${p.name || 'Unknown'}</div>
+                        <div class="updater-subtitle" style="flex: 0 0 10%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            v<span class="${p.isNew ? '' : 'updater-version-view'}" style="color: #fff; ${p.isNew ? '' : 'cursor: pointer; text-decoration: underline;'}">${p.version || '??'}</span>
                         </div>
-                    </td>
+                        <div class="updater-subtitle" style="flex: 0 0 20%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            ${p.author || 'Unknown'}
+                        </div>
+                        <div id="status-${p.name.replace(/\s+/g, '_')}" style="flex: 1; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            <span style="color: #666; font-style: italic;">Checking...</span>
+                        </div>
+                    </div>
+                    <div style="width: 160px; flex-shrink: 0; margin-left: 10px; display: flex; justify-content: flex-end;">
+                        <div class="actions-container" style="display: flex; gap: 4px; align-items: center;">
+                            <button class="updater-btn updater-btn-small updater-edit-btn" style="background:#444; color:#fff;">Edit</button>
+                            <button class="updater-btn updater-btn-small updater-delete-btn" style="background:#444; color:#fff;">Delete</button>
+                        </div>
+                    </div>
                 `;
 
-                row.querySelector('.updater-edit-btn').onclick = () => openEditModal(p, currentPlugins);
+                li.querySelector('.updater-edit-btn').onclick = () => openEditModal(p, currentPlugins);
                 
-                const versionView = row.querySelector('.updater-version-view');
+                const versionView = li.querySelector('.updater-version-view');
                 if (versionView) {
                     versionView.onclick = async () => {
                         try {
@@ -1166,10 +1261,10 @@
                     };
                 }
 
-                const delBtn = row.querySelector('.updater-delete-btn');
+                const delBtn = li.querySelector('.updater-delete-btn');
                 if (delBtn) delBtn.onclick = () => performDelete(p);
                 
-                tbody.appendChild(row);
+                tbody.appendChild(li);
 
                 if (p.cachedRemoteVer !== undefined) {
                     updateStatusCell(p, p.cachedRemoteVer, currentPlugins);
@@ -1217,7 +1312,7 @@
         }
 
         try {
-            const response = await fetch('/plugins/Updater/list');
+            const response = await fetch('/plugins/Updater/list?t=' + Date.now());
             if (!response.ok) throw new Error('Fetch error');
             currentPlugins = await response.json();
             const status = document.getElementById('updater-status');
@@ -1225,9 +1320,8 @@
                 status.textContent = "No valid plugin descriptors found.";
                 return;
             }
-            const thead = document.getElementById('updater-table-head');
-            thead.querySelectorAll('th[data-sort]').forEach(th => {
-                th.onclick = () => sortPlugins(th.dataset.sort);
+            document.querySelectorAll('.updater-sort-link').forEach(link => {
+                link.onclick = () => sortPlugins(link.dataset.sort);
             });
             sortPlugins('status');
             status.textContent = `Detected ${currentPlugins.length} plugins installed in the system.`;
