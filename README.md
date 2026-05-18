@@ -1,14 +1,10 @@
 # Updater Plugin for FM-DX Webserver 
 
 The **Updater** plugin is a management tool designed for the [FM-DX Webserver](https://github.com/NoobishSVK/fm-dx-webserver). 
-It provides an interface to easily track new versions of the installed plugins, download them from the github repository and directly update the plugins or even install new plugins. 
-You may also directly explore the plugin files stored on the server and modify them (useful for config files). 
+It provides an interface to easily track new versions of the installed plugins and update them, automatically downloading their files from the github repository and saving them in the webserver. If you provide the url of the repository of a new plugin, it can install it. 
+You may also explore the plugin files stored on the server, check and modify them (e.g. config files, etc). 
 
 <img width="826" height="378" alt="plugins list" src="https://github.com/user-attachments/assets/88d6ba0e-50e1-4ecf-aa46-64750b0aa457" />
-
-
-
-<img width="1166" height="915" alt="setup page" src="https://github.com/user-attachments/assets/fd94a700-2957-430f-a645-ef47ff3fb4fa" />
 
 
 ## Features
@@ -31,22 +27,27 @@ Follow these steps to install the plugin:
 5. Restart the FM-DX-Webserver one more time
 
 ## Usage
-<img width="269" height="69" alt="header button" src="https://github.com/user-attachments/assets/2936edd5-c194-4639-a9b6-9e46eed78eae" />
 
-
-The plugin interface is **accessible only to administrators** and no icons will appear until you're logged as an administrator. 
+The plugin interface is **accessible only to administrators** and nothing will appear until you're logged as an administrator. 
 You may access it in three ways:
 
-1. **Setup Plugins Page**. Navigate to the setup section of your webserver. In the Plugins page, just down the FM-DX-Webserver Plugin list, you will find the **Installed Plugins List** table is integrated directly into the settings area.
-2. **Header Icon**. If you are logged in as an administrator, an icon will appear in the plugin panel. Clicking it opens the plugin interface as a modal window over the main page.
-3. **Plugin Line Icon**: If you are logged in as an administrator, an icon appears in the header, between the icons of the installed plugins
+<img width="1166" height="915" alt="setup page" src="https://github.com/user-attachments/assets/fd94a700-2957-430f-a645-ef47ff3fb4fa" />
+
+**Setup Plugins Page**. Navigate to the setup section of your webserver. In the Plugins page, just down the FM-DX-Webserver Plugin list, you will find the **Installed Plugins List**
+
+<img width="269" height="69" alt="header button" src="https://github.com/user-attachments/assets/2936edd5-c194-4639-a9b6-9e46eed78eae" />
+
+**Header Icon**. If you are logged in as an administrator, an icon will appear in the plugin panel. Clicking it opens the plugin interface as a modal window over the main page.
+
+**Plugin Line Icon**: If you are logged in as an administrator, an icon appears in the header, between the icons of the installed plugins
 
 In the options menu, you may enable or disable the icons and the list in the setup page. 
 
 ### Main page
-<img width="1166" height="915" alt="setup page" src="https://github.com/user-attachments/assets/a48a95af-c7ba-4adb-b542-e16540cf057b" />
 
-The plugin checks the server and shows the **list of the installed plugins** and their version. If you provide the url of the github repository of the plugin (Edit), it will check if a new version is avaliable.
+The plugin checks the server and shows the **list of the installed plugins** and their version. 
+To chenk if a new version of each plugin is avaliable, you need to provide the url of the repository of each plugin.  
+When started for the first time, it will try to automatically retrieve the url of the repository, looking in the file repo_data.json. Click 'Edit' to add the url of other plugins.
 
 - **Update**: Highlighted in red when a newer version is available. Just click it to automatically download the new version and to save the new files in the plugins directory of the server.
 - **Reinstall**: Allows you to download again all files for the current version. 
@@ -54,7 +55,7 @@ The plugin checks the server and shows the **list of the installed plugins** and
 - **Delete**: Removes the plugin's descriptor file and its associated data directory from the server.
 - **Explore**: Open the file manager to browse the plugin's local directory, view source code, edit files, or delete them.
 
-**IMPORTANT! AFTER UPDATING DON'T FORGET TO CLEAR THE BROWSER CACHE AND RESTART THE SERVER
+**IMPORTANT! AFTER UPDATING DON'T FORGET TO CLEAR THE BROWSER CACHE AND RESTART THE SERVER**
 
 ### Adding a new plugin
 
@@ -83,4 +84,4 @@ Click the **Gear Icon** next to the version number to access advanced settings:
 - **Visibility**: Toggle the presence of the Updater in the Plugin Panel, Header Bar, or the Setup Table.
 - **Configuration Files**: Quick access to raw configuration files `plugins_data.json` (stores the data of each installed plugins) and `pl_data.json` (stores the url of some repository).
 
-*Disclaimer: This plugin requires administrative privileges and an active internet connection to communicate with GitHub. The plugin is provided as is and without any garante. It is recommended to backup your `plugins/` directory before performing any change.*
+*Disclaimer: This plugin requires administrative privileges and an active internet connection to communicate with GitHub. The plugin is provided as is and without any garantee. It is recommended to backup your data before performing any change.*
