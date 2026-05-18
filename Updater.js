@@ -1,7 +1,7 @@
 // Plugin configuration, this is used in the administration when plugins are loaded
 var pluginConfig = {
     name: 'Updater',
-    version: '0.0.7c',
+    version: '0.0.7d',
     author: 'mm-prg',
     frontEndPath: 'Updater/pluginUpdater.js'
 } 

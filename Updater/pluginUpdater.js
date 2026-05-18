@@ -7,7 +7,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.0.7c';
+    const pluginVersion = '0.0.7d';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
 
@@ -80,7 +80,7 @@
         // Retrieve settings from the server
         let settings = { showInPluginPanel: true, showInHeader: true, showInSetup: true };
         try {
-            const settingsRes = await fetch('/plugins/Updater/settings');
+            const settingsRes = await fetch('/plugins/Updater/settings?t=' + Date.now());
             if (settingsRes.ok) {
                 const data = await settingsRes.json();
                 // Migrazione o caricamento nuovi parametri
@@ -118,18 +118,18 @@
         // Inject native styles as a fallback and for specific overrides
         const styleBlock = document.createElement('style');
         styleBlock.textContent = `
-            .updater-card { background: #222; padding: 15px; border-radius: 6px; border: 1px solid #333; margin-bottom: 20px; color: #ddd; }
-            .updater-list { list-style: none; padding: 0; margin: 0; }
-            .updater-list-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-left: 3px solid #3fa9f5; background: #1a1a1a; margin-bottom: 8px; border-radius: 4px; color: #ddd; transition: background 0.2s; }
+            .updater-card { background: #222; padding: 15px; border-radius: 6px; border: 1px solid #333; margin-bottom: 20px; color: #ddd; box-sizing: border-box; text-align: left; }
+            .updater-list { list-style: none; padding: 0; margin: 0; box-sizing: border-box; }
+            .updater-list-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-left: 3px solid #3fa9f5; background: #1a1a1a; margin-bottom: 8px; border-radius: 4px; color: #ddd; transition: background 0.2s; box-sizing: border-box; }
             .updater-list-item:hover { background: #262626; }
             .updater-btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; transition: opacity 0.2s; }
             .updater-btn:hover { opacity: 0.8; }
             .updater-btn-primary { background: #3fa9f5; color: #000; }
             .updater-btn-danger { background: #fe0830; color: #fff; }
             .updater-btn-small { padding: 4px 8px; font-size: 10px; }
-            .updater-title { color: #fff; margin: 0; font-size: 1.2em; font-weight: bold; }
+            .updater-title { color: #fff; margin: 0; font-size: 1.2em; font-weight: bold; box-sizing: border-box; }
             .updater-subtitle { color: #aaa; font-size: 0.85em; margin-top: 2px; }
-            .updater-sort-link { color: #3fa9f5; cursor: pointer; text-decoration: none; font-size: 11px; margin-right: 0; }
+            .updater-sort-link { color: #3fa9f5; cursor: pointer; text-decoration: none; font-size: 11px; margin-right: 0; box-sizing: border-box; }
             .updater-sort-link:hover { text-decoration: underline; }
         `;
         document.head.appendChild(styleBlock);
@@ -143,8 +143,8 @@
             container.style.cssText = `
                 margin: 20px 0;
                 padding: 15px;
-                background: rgba(15, 15, 15, 0.9);
-                border: 1px solid #444;
+                background: rgba(15, 15, 15, 0.95);
+                border: 1px solid #00ff00;
                 border-radius: 8px;
                 color: #fff;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -187,14 +187,14 @@
                 <button id="add-plugin-btn" class="updater-btn updater-btn-primary" style="width: fit-content;" title="Install a new plugin by providing its GitHub repository URL">Add new plugin</button>
             </div>
             
-            <div id="updater-sort-controls" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 0 12px; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #222; padding-bottom: 5px; opacity: 0.8; border-left: 3px solid transparent;">
-                <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden;">
-                    <div class="updater-sort-link" data-sort="name" style="flex: 0 0 25%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Name ↕</div>
-                    <div class="updater-sort-link" data-sort="author" style="flex: 0 0 20%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Author ↕</div>
-                    <div class="updater-sort-link" data-sort="version" style="flex: 0 0 10%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Ver ↕</div>
-                    <div class="updater-sort-link" data-sort="status" style="flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Status ↕</div>
+            <div id="updater-sort-controls" class="updater-list-item" style="background: transparent; border-left-color: transparent; border-bottom: 1px solid #333; border-radius: 0; margin-bottom: 10px; padding-top: 0; padding-bottom: 5px; opacity: 0.8; font-weight: bold; text-transform: uppercase; cursor: default; text-align: left;">
+                <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden; min-width: 0;">
+                    <div class="updater-sort-link" data-sort="name" style="flex: 0 0 25%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Name ↕</div>
+                    <div class="updater-sort-link" data-sort="author" style="flex: 0 0 20%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Author ↕</div>
+                    <div class="updater-sort-link" data-sort="version" style="flex: 0 0 10%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Ver ↕</div>
+                    <div class="updater-sort-link" data-sort="status" style="flex: 1; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Status ↕</div>
                 </div>
-                <div style="width: 160px; flex-shrink: 0; margin-left: 10px;"></div>
+                <div style="width: 160px; flex-shrink: 0; margin-left: 10px; display: flex;"></div>
             </div>
 
             <ul id="updater-list-body" class="updater-list"></ul>
@@ -1239,11 +1239,11 @@
                 saveBtnContainer.style.cssText = 'display:none; gap:10px;';
                 footer.appendChild(saveBtnContainer);
                 
-                const discardBtn = document.createElement('button');
-                discardBtn.innerHTML = '<i class="fa-solid fa-rotate-left"></i> Discard';
-                discardBtn.title = "Cancel all unsaved changes and return to read-only mode";
-                discardBtn.style.cssText = 'padding:8px 15px; border:1px solid #ddd; background:#eee; color:#333; cursor:pointer; border-radius:4px; font-weight:bold;';
-                saveBtnContainer.appendChild(discardBtn);
+                const cancelBtn = document.createElement('button');
+                cancelBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> Cancel';
+                cancelBtn.title = "Cancel all unsaved changes and return to read-only mode"; // Keep the same title for now, or adjust if needed
+                cancelBtn.style.cssText = 'padding:8px 15px; border:1px solid #ddd; background:#eee; color:#333; cursor:pointer; border-radius:4px; font-weight:bold;';
+                saveBtnContainer.appendChild(cancelBtn);
 
                 const saveBtn = document.createElement('button');
                 saveBtn.innerHTML = '<i class="fa-solid fa-save"></i> Save Changes';
@@ -1298,15 +1298,13 @@
                     }
                 };
 
-                discardBtn.onclick = () => {
-                    if (confirm("Discard changes?")) {
-                        codeArea.value = originalContent;
-                        codeArea.readOnly = true;
-                        codeArea.style.borderColor = '#ddd';
-                        enableEditBtn.style.display = 'block';
-                        deleteFileBtn.style.display = 'block';
-                        saveBtnContainer.style.display = 'none';
-                    }
+                cancelBtn.onclick = () => {
+                    codeArea.value = originalContent;
+                    codeArea.readOnly = true;
+                    codeArea.style.borderColor = '#ddd';
+                    enableEditBtn.style.display = 'block';
+                    deleteFileBtn.style.display = 'block';
+                    saveBtnContainer.style.display = 'none';
                 };
 
                 saveBtn.onclick = async () => {
@@ -1344,15 +1342,15 @@
                 li.className = 'updater-list-item';
                 
                 li.innerHTML = `
-                    <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden;">
-                        <div class="updater-title" style="flex: 0 0 25%; color: #3fa9f5; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${p.fullPath || ''}">${p.name || 'Unknown'}</div>
-                        <div class="updater-subtitle" style="flex: 0 0 20%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden; min-width: 0;">
+                        <div class="updater-title" style="flex: 0 0 25%; color: #3fa9f5; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; min-width: 0; text-align: left !important;" title="${p.fullPath || ''}">${p.name || 'Unknown'}</div>
+                        <div class="updater-subtitle" style="flex: 0 0 20%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
                             ${p.author || 'Unknown'}
                         </div>
-                        <div class="updater-subtitle" style="flex: 0 0 10%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        <div class="updater-subtitle" style="flex: 0 0 10%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
                             v<span style="color: #fff;">${p.version || '??'}</span>
                         </div>
-                        <div id="status-${p.name.replace(/\s+/g, '_')}" style="flex: 1; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        <div id="status-${p.name.replace(/\s+/g, '_')}" style="flex: 1; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
                             <span style="color: #666; font-style: italic;">Checking...</span>
                         </div>
                     </div>
@@ -1451,13 +1449,12 @@
             const selfInfo = currentPlugins.find(p => p.name === 'Updater');
             if (selfInfo && selfInfo.version !== pluginVersion) {
                 console.warn(`[Updater] Cache Mismatch! Browser: ${pluginVersion}, Server: ${selfInfo.version}`);
-                const cacheWarning = document.createElement('div');
-                cacheWarning.id = 'updater-cache-warning';
-                cacheWarning.style.cssText = 'background: #fe0830; color: #fff; padding: 10px; margin-bottom: 15px; border-radius: 6px; font-size: 13px; text-align: center; font-weight: bold; border: 2px solid #fff;';
-                cacheWarning.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ATTENZIONE: Il browser sta usando una versione obsoleta in cache (v${pluginVersion}).<br>La versione corretta è v${selfInfo.version}. Premi <b>CTRL + F5</b> per aggiornare.`;
-                const listBody = document.getElementById('updater-list-body');
-                if (listBody) listBody.parentNode.insertBefore(cacheWarning, listBody);
+                showCacheWarning(selfInfo.version);
             }
+
+            // Rimuoviamo il warning se la versione torna ad essere corretta dopo un refresh
+            const oldWarning = document.getElementById('updater-cache-warning');
+            if (oldWarning && selfInfo && selfInfo.version === pluginVersion) oldWarning.remove();
 
             const status = document.getElementById('updater-status');
             if (currentPlugins.length === 0) {
@@ -1473,6 +1470,19 @@
             console.error('[Updater] UI Error:', e);
             document.getElementById('updater-status').textContent = "Error loading plugin data.";
         }
+    }
+
+    function showCacheWarning(serverVersion) {
+        if (document.getElementById('updater-cache-warning')) return;
+        const cacheWarning = document.createElement('div');
+        cacheWarning.id = 'updater-cache-warning';
+        cacheWarning.style.cssText = 'background: #fe0830; color: #fff; padding: 12px; margin-bottom: 15px; border-radius: 6px; font-size: 13px; text-align: center; font-weight: bold; border: 2px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.5); position: sticky; top: 0; z-index: 10001;';
+        cacheWarning.innerHTML = `
+            <i class="fa-solid fa-triangle-exclamation" style="font-size: 20px; margin-bottom: 5px; display: block;"></i>
+            CACHE DETECTED: Il browser sta usando la versione v${pluginVersion}.<br>
+            Sul server è presente la v${serverVersion}. Per favore, premi <b>CTRL + F5</b>.`;
+        const listBody = document.getElementById('updater-list-body');
+        if (listBody) listBody.parentNode.insertBefore(cacheWarning, listBody);
     }
 
     initUpdater();
