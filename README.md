@@ -2,10 +2,11 @@
 
 The **Updater** plugin is a management tool designed for the [FM-DX Webserver](https://github.com/NoobishSVK/fm-dx-webserver). It provides a centralized interface to track, update, and install plugins directly from GitHub.
 
-<img width="1876" height="961" alt="setup page" src="https://github.com/user-attachments/assets/c173a588-1217-4c53-a5bd-b8d927edb15a" />
+<img width="826" height="378" alt="plugins list" src="https://github.com/user-attachments/assets/88d6ba0e-50e1-4ecf-aa46-64750b0aa457" />
 
 
-<img width="1876" height="961" alt="setup page" src="https://github.com/user-attachments/assets/c173a588-1217-4c53-a5bd-b8d927edb15a" />
+
+<img width="1166" height="915" alt="setup page" src="https://github.com/user-attachments/assets/fd94a700-2957-430f-a645-ef47ff3fb4fa" />
 
 
 ## Features
@@ -31,6 +32,8 @@ Follow these steps to install the plugin:
 
 
 ## Usage
+<img width="269" height="69" alt="header button" src="https://github.com/user-attachments/assets/2936edd5-c194-4639-a9b6-9e46eed78eae" />
+
 
 The plugin interface is accessible to administrators in three ways, only accessible to administrators:
 
@@ -42,6 +45,8 @@ You may enable or disable the inteface you like
 
 
 ### Plugins page
+<img width="1166" height="915" alt="setup page" src="https://github.com/user-attachments/assets/a48a95af-c7ba-4adb-b542-e16540cf057b" />
+
 
 - **Update**: Highlighted in red when a newer version is available.
 - **Reinstall**: Allows you to force-download all files for the current version if the installation is corrupted.
@@ -66,7 +71,9 @@ Click the **Gear Icon** next to the version number to access advanced settings:
 - **Files & Explorer**: Quick access to the "Browse Plugins Folder" tool or direct view of the raw configuration files (`new_data.json` and `pl_data.json`).
 - **Maintenance**: **Merge New Data** allows you to consolidate manually added plugins or path overrides into the main database, keeping your configuration clean.
 
-### Browse files
+### Explore files
+<img width="1052" height="884" alt="explore page" src="https://github.com/user-attachments/assets/8a949101-f545-4d97-8c82-30a7f9b1c673" />
+
 
 The **Folder Explorer** (accessible via the Options menu) allows you to navigate the server's `plugins/` directory:
 - **Navigation**: Move through subdirectories and go back using the "Parent Directory" link.
