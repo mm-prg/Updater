@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.0.8a)
+ * Updater Plugin for FM-DX Webserver (v. 0.0.8b)
  * ************************************************
  */
 
@@ -32,7 +32,7 @@ if (!fs.existsSync(repoDataPath)) fs.writeFileSync(repoDataPath, JSON.stringify(
 logInfo(`[${pluginName}] Backend script is being loaded...`);
 
 // Global variable to track the last known GitHub API rate limit
-let lastRateLimit = { remaining: '?', limit: '60' };
+let lastRateLimit = { remaining: '?', limit: '60', reset: 0 };
 
 function readJsonFile(filePath) {
     try {
@@ -126,10 +126,12 @@ const fetchGithubApi = (url) => new Promise((resolve, reject) => {
     https.get(url, options, (res) => {
         const remaining = res.headers['x-ratelimit-remaining'];
         const limit = res.headers['x-ratelimit-limit'];
+        const reset = res.headers['x-ratelimit-reset'];
         if (remaining !== undefined) {
             lastRateLimit.remaining = remaining;
             lastRateLimit.limit = limit;
-            logInfo(`[Updater] GitHub API Rate Limit: ${remaining}/${limit} (URL: ${url})`);
+            lastRateLimit.reset = reset;
+            logInfo(`[Updater] GitHub API Rate Limit: ${remaining}/${limit}, Reset: ${reset} (URL: ${url})`);
         }
 
         let data = '';

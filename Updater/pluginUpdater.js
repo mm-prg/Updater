@@ -7,7 +7,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.0.8a';
+    const pluginVersion = '0.0.8b';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
 
@@ -45,10 +45,10 @@
     // Updates the version tag with GitHub API rate limit info
     function updateRateLimitDisplay(rateLimit) {
         const tag = document.getElementById('updater-version-tag');
-        if (tag && rateLimit && rateLimit.remaining !== undefined) {
+        if (tag && rateLimit && rateLimit.remaining != null) {
             tag.textContent = `v${pluginVersion} (api left ${rateLimit.remaining})`;
             // Change color if running low
-            const remaining = parseInt(rateLimit.remaining);
+            const remaining = typeof rateLimit.remaining === 'number' ? rateLimit.remaining : parseInt(rateLimit.remaining);
             if (remaining < 10) tag.style.color = '#fe0830';
             else if (remaining < 30) tag.style.color = '#ffaa00';
             else tag.style.color = '#777';
@@ -192,7 +192,7 @@
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <a href="https://github.com/mm-prg/Updater" target="_blank" class="updater-btn" style="background:#333; color:#fff; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; width:32px; padding:6px;" title="Updater Repository"><i class="fa-solid fa-circle-question"></i></a>
                     <button id="updater-options-btn" class="updater-btn" style="background:#333; color:#fff; display:inline-flex; align-items:center; justify-content:center; width:32px; padding:6px;" title="Options"><i class="fa-solid fa-gear"></i></button>
-                    <span id="updater-version-tag" style="color: #777; font-size: 11px;">v${pluginVersion}</span>
+                    <span id="updater-version-tag" style="color: #777; font-size: 11px;">v${pluginVersion} (api left ?)</span>
                 </div>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
@@ -803,9 +803,22 @@
 
                         const remaining = res.headers.get('x-ratelimit-remaining');
                         const limit = res.headers.get('x-ratelimit-limit');
-                        if (remaining !== null) updateRateLimitDisplay({ remaining, limit });
+                        const reset = res.headers.get('x-ratelimit-reset');
+                        if (remaining !== null) updateRateLimitDisplay({ remaining, limit, reset });
 
-                        if (!res.ok) throw new Error("Repository not found or API limit reached.");
+                        if (!res.ok) {
+                            if (res.status === 403) {
+                                let msg = "GitHub API rate limit exceeded.";
+                                if (reset) {
+                                    const minutes = Math.ceil((parseInt(reset) * 1000 - Date.now()) / 60000);
+                                    msg += `\n\nPlease wait about ${minutes} minute(s) before trying again.`;
+                                }
+                                throw new Error(msg);
+                            }
+                            if (res.status === 404) throw new Error("Repository not found. Please verify the owner and repository name.");
+                            throw new Error(`GitHub API Error: ${res.status} ${res.statusText}`);
+                        }
+
                         let files = await res.json();
 
                         // Determine if we should look in the root or in a 'plugins' subdirectory
