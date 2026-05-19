@@ -46,8 +46,8 @@ In the options menu, you may enable or disable the icons and the list in the set
 ### Main page
 
 The plugin checks the server and shows the **list of the installed plugins** and their version. 
-To check if a new version of each plugin is available, you need to provide the URL of the repository of each plugin.  
-When started for the first time, it will try to automatically retrieve the URL of the repository, looking in the file repo_data.json. Click 'Edit' to add the URL of other plugins.
+To check if a new version of each plugin is available, you need to provide **the URL of the github repository** of each plugin (Edit). 
+When started for the first time, it will try to automatically retrieve the URL of the repository, looking in the file repo_data.json. Click 'Edit' to add the URL of other plugins. 
 
 - **Update**: Highlighted in red when a newer version is available. Just click it to automatically download the new version and to save the new files in the plugins directory of the server.
 - **Reinstall**: Allows you to download again all files for the current version. 
@@ -55,7 +55,7 @@ When started for the first time, it will try to automatically retrieve the URL o
 - **Delete**: Removes the plugin's descriptor file and its associated data directory from the server.
 - **Explore**: Open the file manager to browse the plugin's local directory, view source code, edit files, or delete them.
 
-**IMPORTANT! AFTER UPDATING, DON'T FORGET TO CLEAR THE BROWSER CACHE AND RESTART THE SERVER.**
+**AFTER UPDATING, DON'T FORGET TO CLEAR THE BROWSER CACHE AND RESTART THE SERVER!**
 
 ### Adding a new plugin
 
@@ -68,20 +68,26 @@ When started for the first time, it will try to automatically retrieve the URL o
 4. Click **Save & Install**. The updater will download the descriptor and recursively pull all required assets into the correct folders.
 
 ### Explore page
-<img width="1052" height="884" alt="explore page" src="https://github.com/user-attachments/assets/8a949101-f545-4d97-8c82-30a7f9b1c673" />
+
+<img width="1001" height="884" alt="explore page" src="https://github.com/user-attachments/assets/f4fe85e4-57d2-4c3b-b24d-55255443ad66" />
 
 Clicking on "Explore" opens the Explore page.
 Select a file or a directory from the dropdown menus on the left, to browse and check files stored in the server directories **"\plugins"** and **"\plugins_configs"**
 
 You may view the content of text files and even modify them (config files, etc). 
 
-When you download a plugin via the Updater, a sidebar will appear with a list of the downloaded files and the skipped files. To avoid overfilling the server \plugins directory, no file outside the plugins directory is downloaded. If you want to get these files, just click on the repository link of the plugin, shown on the right.
- 
+When you download a plugin via the Updater, a sidebar will appear with a list of the downloaded files and the skipped files. To avoid overfilling the server \plugins directory, no file outside the plugins directory is downloaded. If you want to view these files, just click on the repository link of the plugin, shown above. 
+
 
 ### Options Menu
 
 Click the **Gear Icon** next to the version number to access advanced settings:
 - **Visibility**: Toggle the presence of the Updater in the Plugin Panel, Header Bar, or the Setup Table.
 - **Configuration Files**: Quick access to raw configuration files `plugins_data.json` (stores the data of each installed plugin) and `pl_data.json` (stores the url of some repository).
+
+### Notes
+If the new version of a plugin has changed the names of the files or directories used or their position, it is recommended to delete it and then reload it as a new plugin. 
+The program uses the Github API (https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2026-03-10), which has a limit of 60 requests per hour. 
+The limit should be sufficient for all normal uses. If it is exceeded (error 403), you simply have to wait the necessary time. The number of available calls is indicated on the main page, at the top right. 
 
 *Disclaimer: This plugin requires administrative privileges and an active internet connection to communicate with GitHub. The plugin is provided as is and without any guarantee. It is recommended to back up your data before performing any change.*
