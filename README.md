@@ -1,8 +1,8 @@
 # Updater Plugin for FM-DX Webserver 
 
 The **Updater** plugin is a management tool designed for the [FM-DX Webserver](https://github.com/NoobishSVK/fm-dx-webserver). 
-It provides an interface to easily track new versions of the installed plugins and update them, automatically downloading their files from the github repository and saving them in the webserver. If you provide the url of the repository of a new plugin, it can install it. 
-You may also explore the plugin files stored on the server, check and modify them (e.g. config files, etc). 
+It provides an interface to easily track new versions of the installed plugins and update them, automatically downloading files from the GitHub repository and saving them in the web server. If you provide the URL of the repository of a new plugin, it can install it. 
+You may also explore the plugin files stored on the server and check and modify them (e.g. config files, etc). 
 
 <img width="826" height="378" alt="plugins list" src="https://github.com/user-attachments/assets/88d6ba0e-50e1-4ecf-aa46-64750b0aa457" />
 
@@ -24,11 +24,11 @@ Follow these steps to install the plugin:
 2. Copy the entire `Updater/` folder into the `/plugins` directory.
 3. Restart the FM-DX-Webserver.
 4. Log in to the administrator panel, enable the plugin in the Setup page, and save.
-5. Restart the FM-DX-Webserver one more time
+5. Restart the FM-DX-Webserver one more time.
 
 ## Usage
 
-The plugin interface is **accessible only to administrators** and nothing will appear until you're logged as an administrator. 
+The plugin interface is **accessible only to administrators** and nothing will appear until you're logged in as an administrator. 
 You may access it in three ways:
 
 <img width="1166" height="915" alt="setup page" src="https://github.com/user-attachments/assets/fd94a700-2957-430f-a645-ef47ff3fb4fa" />
@@ -46,21 +46,21 @@ In the options menu, you may enable or disable the icons and the list in the set
 ### Main page
 
 The plugin checks the server and shows the **list of the installed plugins** and their version. 
-To chenk if a new version of each plugin is avaliable, you need to provide the url of the repository of each plugin.  
-When started for the first time, it will try to automatically retrieve the url of the repository, looking in the file repo_data.json. Click 'Edit' to add the url of other plugins.
+To check if a new version of each plugin is available, you need to provide the URL of the repository of each plugin.  
+When started for the first time, it will try to automatically retrieve the URL of the repository, looking in the file repo_data.json. Click 'Edit' to add the URL of other plugins.
 
 - **Update**: Highlighted in red when a newer version is available. Just click it to automatically download the new version and to save the new files in the plugins directory of the server.
 - **Reinstall**: Allows you to download again all files for the current version. 
-- **Edit**: Add or modify the GitHub repository URL. Clicking the verify button, checks the url and automatically detects the plugin descriptor file and the plugin directory 
+- **Edit**: Add or modify the GitHub repository URL. Clicking the verify button checks the URL and automatically detects the plugin descriptor file and the plugin directory. 
 - **Delete**: Removes the plugin's descriptor file and its associated data directory from the server.
 - **Explore**: Open the file manager to browse the plugin's local directory, view source code, edit files, or delete them.
 
-**IMPORTANT! AFTER UPDATING DON'T FORGET TO CLEAR THE BROWSER CACHE AND RESTART THE SERVER**
+**IMPORTANT! AFTER UPDATING, DON'T FORGET TO CLEAR THE BROWSER CACHE AND RESTART THE SERVER.**
 
 ### Adding a new plugin
 
 1. Click the **Add new plugin** button in the top-right corner.
-2. Paste the **GitHub Repository URL** (e.g., `https://github.com/mm-prg/FavStations`).
+2. Paste the **GitHub repository URL** (e.g., `https://github.com/mm-prg/FavStations`).
 3. Click the 🔍 (**Verify**) button. The system will automatically:
    - Scan the repository for a valid descriptor file (containing `pluginConfig`).
    - Check both the root and the `/plugins` directory on GitHub.
@@ -70,18 +70,18 @@ When started for the first time, it will try to automatically retrieve the url o
 ### Explore page
 <img width="1052" height="884" alt="explore page" src="https://github.com/user-attachments/assets/8a949101-f545-4d97-8c82-30a7f9b1c673" />
 
-
 Clicking on "Explore" opens the Explore page.
-Select a file or a directoy from the dropdown menus on the left, to browse and check files store in the server directories **"\plugins"** and **"\plugins_configs"**
+Select a file or a directory from the dropdown menus on the left, to browse and check files stored in the server directories **"\plugins"** and **"\plugins_configs"**
 
 You may view the content of text files and even modify them (config files, etc). 
 
-When you download a plugin via the Updater, in the sidebar will appear a list of the downloaded files and the skipped files. To avoid overfilling the server \plugins directory, no file outside the plugin directory is downloaded. If you want to get this files, just click on the repository link of the plugin, shown on the right. 
+When you download a plugin via the Updater, a sidebar will appear with a list of the downloaded files and the skipped files. To avoid overfilling the server \plugins directory, no file outside the plugins directory is downloaded. If you want to get these files, just click on the repository link of the plugin, shown on the right.
+ 
 
 ### Options Menu
 
 Click the **Gear Icon** next to the version number to access advanced settings:
 - **Visibility**: Toggle the presence of the Updater in the Plugin Panel, Header Bar, or the Setup Table.
-- **Configuration Files**: Quick access to raw configuration files `plugins_data.json` (stores the data of each installed plugins) and `pl_data.json` (stores the url of some repository).
+- **Configuration Files**: Quick access to raw configuration files `plugins_data.json` (stores the data of each installed plugin) and `pl_data.json` (stores the url of some repository).
 
-*Disclaimer: This plugin requires administrative privileges and an active internet connection to communicate with GitHub. The plugin is provided as is and without any garantee. It is recommended to backup your data before performing any change.*
+*Disclaimer: This plugin requires administrative privileges and an active internet connection to communicate with GitHub. The plugin is provided as is and without any guarantee. It is recommended to back up your data before performing any change.*
