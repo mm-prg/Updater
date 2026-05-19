@@ -7,7 +7,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.0.8';
+    const pluginVersion = '0.0.8a';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
 
@@ -46,7 +46,7 @@
     function updateRateLimitDisplay(rateLimit) {
         const tag = document.getElementById('updater-version-tag');
         if (tag && rateLimit && rateLimit.remaining !== undefined) {
-            tag.textContent = `v${pluginVersion} (api ${rateLimit.remaining}/${rateLimit.limit})`;
+            tag.textContent = `v${pluginVersion} (api left ${rateLimit.remaining})`;
             // Change color if running low
             const remaining = parseInt(rateLimit.remaining);
             if (remaining < 10) tag.style.color = '#fe0830';
@@ -190,8 +190,8 @@
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px;">
                 <h3 class="updater-title">Installed Plugins</h3>
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <a href="https://github.com/mm-prg/Updater" target="_blank" class="updater-btn" style="background:#333; color:#fff; text-decoration:none; display:inline-flex; align-items:center; justify-content:center;" title="Updater Repository"><i class="fa-solid fa-circle-question"></i></a>
-                    <button id="updater-options-btn" class="updater-btn" style="background:#333; color:#fff;" title="Options"><i class="fa-solid fa-gear"></i></button>
+                    <a href="https://github.com/mm-prg/Updater" target="_blank" class="updater-btn" style="background:#333; color:#fff; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; width:32px; padding:6px;" title="Updater Repository"><i class="fa-solid fa-circle-question"></i></a>
+                    <button id="updater-options-btn" class="updater-btn" style="background:#333; color:#fff; display:inline-flex; align-items:center; justify-content:center; width:32px; padding:6px;" title="Options"><i class="fa-solid fa-gear"></i></button>
                     <span id="updater-version-tag" style="color: #777; font-size: 11px;">v${pluginVersion}</span>
                 </div>
             </div>
@@ -421,8 +421,9 @@
                             fileUrl: fileUrl,
                             localDir: localDir
                         })
-                    }).then(res => {
-                        if (res.ok) {
+                    }).then(res => res.json()).then(data => {
+                        if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
+                        if (data.ok) {
                             p.repoUrl = repoUrl; p.fileUrl = fileUrl; p.localDir = localDir;
                             renderPluginRows();
                         }
@@ -626,6 +627,11 @@
                         // Step 1: Check root contents to see if a 'plugins' folder exists
                         let contentsUrl = `https://api.github.com/repos/${owner}/${repo}/contents/`;
                         let res = await fetch(contentsUrl);
+                        
+                        const remaining = res.headers.get('x-ratelimit-remaining');
+                        const limit = res.headers.get('x-ratelimit-limit');
+                        if (remaining !== null) updateRateLimitDisplay({ remaining, limit });
+
                         if (!res.ok) throw new Error("Repository not found or API limit reached.");
                         let files = await res.json();
 
@@ -686,28 +692,33 @@
                                 localDir: localDir || null
                             })
                         });
-                        if (res.ok) {
-                            overlay.remove();
-                            // Update local object and re-run check
-                            p.repoUrl = repoUrl || null;
-                            p.fileUrl = fileUrl || null;
-                            p.localDir = localDir || null;
-                            // Clean old fields if present // Force re-check
-                            delete p.githubOwner; delete p.githubRepo; delete p.githubPath;
-                            delete p.cachedRemoteVer;
-                            renderPluginRows();
 
-                            // Update all plugins from the same author as they might have inherited the new owner
-                            allPlugins.forEach(pl => {
-                                if (pl.author === p.author) {
-                                    const cell = document.getElementById(`status-${pl.name.replace(/\s+/g, '_')}`);
-                                    if (cell) cell.innerHTML = '<span style="color: #666; font-style: italic;">Updating...</span>';
-                                    delete pl.cachedRemoteVer;
-                                    checkUpdate(pl, allPlugins);
-                                }
-                            });
-                        } else {
-                            alert("Error saving settings.");
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
+                            if (data.ok) {
+                                overlay.remove();
+                                // Update local object and re-run check
+                                p.repoUrl = repoUrl || null;
+                                p.fileUrl = fileUrl || null;
+                                p.localDir = localDir || null;
+                                // Clean old fields if present // Force re-check
+                                delete p.githubOwner; delete p.githubRepo; delete p.githubPath;
+                                delete p.cachedRemoteVer;
+                                renderPluginRows();
+
+                                // Update all plugins from the same author as they might have inherited the new owner
+                                allPlugins.forEach(pl => {
+                                    if (pl.author === p.author) {
+                                        const cell = document.getElementById(`status-${pl.name.replace(/\s+/g, '_')}`);
+                                        if (cell) cell.innerHTML = '<span style="color: #666; font-style: italic;">Updating...</span>';
+                                        delete pl.cachedRemoteVer;
+                                        checkUpdate(pl, allPlugins);
+                                    }
+                                });
+                            } else {
+                                alert("Error saving settings.");
+                            }
                         }
                     } catch (e) {
                         alert("Connection error.");
@@ -789,6 +800,11 @@
                         // Step 1: Check root contents to see if a 'plugins' folder exists
                         let contentsUrl = `https://api.github.com/repos/${owner}/${repo}/contents/`;
                         let res = await fetch(contentsUrl);
+
+                        const remaining = res.headers.get('x-ratelimit-remaining');
+                        const limit = res.headers.get('x-ratelimit-limit');
+                        if (remaining !== null) updateRateLimitDisplay({ remaining, limit });
+
                         if (!res.ok) throw new Error("Repository not found or API limit reached.");
                         let files = await res.json();
 
@@ -899,7 +915,9 @@
                             })
                         });
 
-                        if (res.ok) {
+                        const data = await res.json();
+                        if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
+                        if (data.ok) {
                             // Step 2: Trigger the actual file download and installation process
                             saveBtn.textContent = "Downloading files...";
                             const updateRes = await fetch('/plugins/Updater/update-plugin', {
@@ -931,6 +949,9 @@
                                 }).catch(() => {});
                             }
 
+                            // Update rate limit display after the second save-override call
+                            if (updateData.rateLimit) updateRateLimitDisplay(updateData.rateLimit);
+                            
                             // Success: close modal, show summary, and refresh the plugin list
                             overlay.remove();
                             const fileList = updateData.files ? `\n\nDownloaded files:\n- ${updateData.files.join('\n- ')}` : '';
@@ -1073,12 +1094,6 @@
 
                 const updateInfo = (fName, fPath, rUrl, dUrl) => {
                     infoContainer.innerHTML = '';
-                    if (rUrl) {
-                        const div = document.createElement('div');
-                        div.style.cssText = 'font-size: 11px; color: #777; margin-bottom: 5px; font-family: monospace; background: #f4f4f4; padding: 4px 8px; border-left: 3px solid #00ccff;';
-                        div.innerHTML = `<strong>Repo:</strong> <a href="${rUrl}" target="_blank" style="color:#0066cc;">${rUrl}</a>`;
-                        infoContainer.appendChild(div);
-                    }
                     if (dUrl) {
                         const div = document.createElement('div');
                         div.style.cssText = 'font-size: 11px; color: #777; margin-bottom: 5px; font-family: monospace; background: #f4f4f4; padding: 4px 8px; border-left: 3px solid #3fa9f5;';
@@ -1220,6 +1235,14 @@
                     });
                     skipDiv.appendChild(skipUl);
                     sidebar.prepend(skipDiv);
+                }
+
+                // Repository Link (moved to Sidebar Top)
+                if (repoUrl) {
+                    const repoBox = document.createElement('div');
+                    repoBox.style.cssText = 'margin-bottom:15px; background:#f4f4f4; border:1px solid #ddd; border-radius:4px; padding:10px; border-left:3px solid #3fa9f5;';
+                    repoBox.innerHTML = `<div style="font-weight:bold; font-size:11px; color:#777; margin-bottom:5px;">REPOSITORY:</div><a href="${repoUrl}" target="_blank" style="color:#0066cc; font-size:11px; font-family:monospace; word-break:break-all;">${repoUrl}</a>`;
+                    sidebar.prepend(repoBox);
                 }
 
                 // Detect the initial directory to browse based on the file's path

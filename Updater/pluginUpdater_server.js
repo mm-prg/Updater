@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.0.8)
+ * Updater Plugin for FM-DX Webserver (v. 0.0.8a)
  * ************************************************
  */
 
@@ -276,11 +276,11 @@ endpointsRouter.post('/plugins/Updater/save-override', express.json(), (req, res
             ...(notDownloadedFiles !== undefined && { notDownloadedFiles })
         };
 
-        if (saveOverrides(overrides)) res.json({ ok: true });
-        else res.status(500).json({ ok: false });
+        if (saveOverrides(overrides)) res.json({ ok: true, rateLimit: lastRateLimit });
+        else res.status(500).json({ ok: false, rateLimit: lastRateLimit });
     } catch (e) {
         logError(`[${pluginName}] Error in save-override:`, e);
-        res.status(500).json({ ok: false, error: e.message });
+        res.status(500).json({ ok: false, error: e.message, rateLimit: lastRateLimit });
     }
 });
 
