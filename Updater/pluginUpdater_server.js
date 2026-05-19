@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.0.7d)
+ * Updater Plugin for FM-DX Webserver (v. 0.0.8)
  * ************************************************
  */
 
@@ -30,6 +30,9 @@ if (!fs.existsSync(overridesPath)) fs.writeFileSync(overridesPath, JSON.stringif
 if (!fs.existsSync(repoDataPath)) fs.writeFileSync(repoDataPath, JSON.stringify({}, null, 2), 'utf8');
 
 logInfo(`[${pluginName}] Backend script is being loaded...`);
+
+// Global variable to track the last known GitHub API rate limit
+let lastRateLimit = { remaining: '?', limit: '60' };
 
 function readJsonFile(filePath) {
     try {
@@ -116,14 +119,22 @@ const download = (url, dest, headers = {}) => new Promise((resolve, reject) => {
 /**
  * Helper to query the GitHub API
  */
-const fetchGithubApi = (url) => new Promise((resolve, reject) => { // Recursively downloads the content of a folder from GitHub via API
+const fetchGithubApi = (url) => new Promise((resolve, reject) => {
     const options = {
         headers: { 'User-Agent': 'FM-DX-Webserver-Updater' }
     };
     https.get(url, options, (res) => {
+        const remaining = res.headers['x-ratelimit-remaining'];
+        const limit = res.headers['x-ratelimit-limit'];
+        if (remaining !== undefined) {
+            lastRateLimit.remaining = remaining;
+            lastRateLimit.limit = limit;
+            logInfo(`[Updater] GitHub API Rate Limit: ${remaining}/${limit} (URL: ${url})`);
+        }
+
         let data = '';
         res.on('data', chunk => data += chunk);
-        res.on('end', () => { // Download the file
+        res.on('end', () => {
             if (res.statusCode !== 200) return reject(new Error(`API Status ${res.statusCode}`));
             try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
         });
@@ -134,11 +145,20 @@ const fetchGithubApi = (url) => new Promise((resolve, reject) => { // Recursivel
  * Automatically discovers descriptor file and local directory from a GitHub repository.
  */
 async function discoverMetadataFromRepo(repoUrl) {
+    // Check rate limit status before starting a discovery process
     const match = repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)/);
     if (!match) return null;
     const [_, owner, repo] = match;
 
     try {
+        // Pre-check rate limit using a lightweight head/get if possible, 
+        // but here we just try to fetch and let fetchGithubApi log the remaining calls.
+        const rateCheck = await fetchGithubApi(`https://api.github.com/rate_limit`).catch(() => null);
+        if (rateCheck && rateCheck.resources && rateCheck.resources.core.remaining < 2) {
+            logError(`[Updater] GitHub API limit too low (${rateCheck.resources.core.remaining}). Aborting discovery.`);
+            return null;
+        }
+
         let contents = await fetchGithubApi(`https://api.github.com/repos/${owner}/${repo}/contents/`);
         if (!Array.isArray(contents)) return null;
 
@@ -170,32 +190,35 @@ async function discoverMetadataFromRepo(repoUrl) {
 }
 
 /**
- * Recursively downloads the content of a folder from GitHub via API
+ * Downloads files using the Tree data to avoid hitting GitHub API Rate Limits.
+ * Uses raw.githubusercontent.com which is not rate-limited.
  */
-async function downloadRecursive(owner, repo, branch, remotePath, localBaseDir) { // Create the directory and descend recursively
-    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${remotePath}?ref=${branch}`;
-    const items = await fetchGithubApi(apiUrl);
+async function downloadFromTree(owner, repo, branch, remoteDirPath, localBaseDir, treeItems) {
     let downloadedFiles = [];
+    const folderPrefix = remoteDirPath.endsWith('/') ? remoteDirPath : remoteDirPath + '/';
 
-    if (!Array.isArray(items)) return downloadedFiles;
+    for (const item of treeItems) {
+        if (item.type === 'blob' && item.path.startsWith(folderPrefix)) {
+            const relativePath = item.path.substring(folderPrefix.length);
+            const localPath = path.join(localBaseDir, relativePath);
+            const localDir = path.dirname(localPath);
 
-    for (const item of items) {
-        const localPath = path.join(localBaseDir, item.name);
+            if (!fs.existsSync(localDir)) fs.mkdirSync(localDir, { recursive: true });
 
-        if (item.type === 'file') {
-            // Download the file
-            await download(item.download_url, localPath);
-            logInfo(`[Updater] Downloaded: ${item.path}`);
+            const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${item.path}`;
+            await download(rawUrl, localPath);
             downloadedFiles.push(item.path);
-        } else if (item.type === 'dir') {
-            // Create the directory and descend recursively
-            if (!fs.existsSync(localPath)) fs.mkdirSync(localPath, { recursive: true });
-            const subFiles = await downloadRecursive(owner, repo, branch, item.path, localPath);
-            downloadedFiles = downloadedFiles.concat(subFiles);
         }
     }
     return downloadedFiles;
 }
+
+/**
+ * Endpoint to retrieve the current API rate limit status
+ */
+endpointsRouter.get('/plugins/Updater/rate-limit', (req, res) => {
+    res.json(lastRateLimit);
+});
 
 /**
  * Endpoint to retrieve global plugin options
@@ -278,6 +301,7 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json(), async (re
 
         let downloadedList = [];
         let allRepoFiles = [];
+        let treeItems = [];
 
         // Step 1: Download the list of all files in the repository (GitHub Tree API)
         try {
@@ -286,6 +310,7 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json(), async (re
                 allRepoFiles = treeData.tree
                     .filter(item => item.type === 'blob')
                     .map(item => item.path);
+                treeItems = treeData.tree;
             }
         } catch (apiErr) {
             logError(`[Updater] Failed to fetch repo tree for ${pluginName}:`, apiErr);
@@ -317,8 +342,8 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json(), async (re
                 logInfo(`[Updater] Created local directory: ${localTargetDir}`);
             }
             
-            logInfo(`[Updater] Starting recursive download for ${remoteDirPath}...`);
-            const files = await downloadRecursive(owner, repo, branch, remoteDirPath, localTargetDir);
+            logInfo(`[Updater] Downloading files from tree for ${remoteDirPath}...`);
+            const files = await downloadFromTree(owner, repo, branch, remoteDirPath, localTargetDir, treeItems);
             downloadedList = downloadedList.concat(files);
         }
 
@@ -334,7 +359,7 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json(), async (re
         saveOverrides(overrides);
 
         // Return the summary of changes to the frontend
-        res.json({ ok: true, files: downloadedList, notDownloadedFiles: notDownloadedList });
+        res.json({ ok: true, files: downloadedList, notDownloadedFiles: notDownloadedList, rateLimit: lastRateLimit });
     } catch (e) {
         // Log the failure and return a 500 error
         logError(`[Updater] Update failed for ${pluginName}:`, e);
@@ -602,7 +627,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
         });
 
         logInfo(`[${pluginName}] Total plugins found: ${pluginList.length}`);
-        res.json(pluginList);
+        res.json({ plugins: pluginList, rateLimit: lastRateLimit });
     } catch (e) {
         logError(`[${pluginName}] Failed to read plugins directory:`, e);
         res.status(500).json([]);

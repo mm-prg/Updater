@@ -7,7 +7,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.0.7d';
+    const pluginVersion = '0.0.8';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
 
@@ -40,6 +40,19 @@
             if (cmp < 0) return false;
         }
         return false;
+    }
+
+    // Updates the version tag with GitHub API rate limit info
+    function updateRateLimitDisplay(rateLimit) {
+        const tag = document.getElementById('updater-version-tag');
+        if (tag && rateLimit && rateLimit.remaining !== undefined) {
+            tag.textContent = `v${pluginVersion} (api ${rateLimit.remaining}/${rateLimit.limit})`;
+            // Change color if running low
+            const remaining = parseInt(rateLimit.remaining);
+            if (remaining < 10) tag.style.color = '#fe0830';
+            else if (remaining < 30) tag.style.color = '#ffaa00';
+            else tag.style.color = '#777';
+        }
     }
 
     // Retrieve the version from the .js file on GitHub
@@ -179,7 +192,7 @@
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <a href="https://github.com/mm-prg/Updater" target="_blank" class="updater-btn" style="background:#333; color:#fff; text-decoration:none; display:inline-flex; align-items:center; justify-content:center;" title="Updater Repository"><i class="fa-solid fa-circle-question"></i></a>
                     <button id="updater-options-btn" class="updater-btn" style="background:#333; color:#fff;" title="Options"><i class="fa-solid fa-gear"></i></button>
-                    <span style="color: #777; font-size: 11px;">v${pluginVersion}</span>
+                    <span id="updater-version-tag" style="color: #777; font-size: 11px;">v${pluginVersion}</span>
                 </div>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
@@ -423,7 +436,8 @@
                 try {
                     const response = await fetch('/plugins/Updater/list?t=' + Date.now());
                     if (!response.ok) throw new Error();
-                    const newList = await response.json();
+                    const data = await response.json();
+                    const newList = data.plugins || data;
 
                     // Preserve dynamic data (like cached remote version) to maintain Status sorting
                     newList.forEach(np => {
@@ -432,6 +446,7 @@
                     });
 
                     currentPlugins = newList;
+                    if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
                     sortPlugins(sortState.key, false);
                     const status = document.getElementById('updater-status');
                     if (status) status.textContent = `Detected ${currentPlugins.length} plugins installed in the system.`;
@@ -484,6 +499,7 @@
                         })
                     });
                     const data = await res.json();
+                    if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
                     if (data.ok) {
                         // If the update succeeded, save the list of modified files to the local configuration
                         if (data.files || data.notDownloadedFiles) {
@@ -901,6 +917,7 @@
                             });
                             
                             const updateData = await updateRes.json();
+                            if (updateData.rateLimit) updateRateLimitDisplay(updateData.rateLimit);
                             if (updateData.ok && (updateData.files || updateData.notDownloadedFiles)) {
                                 // Step 3: Record the list of downloaded files for future management/viewing
                                 await fetch('/plugins/Updater/save-override', {
@@ -962,7 +979,7 @@
                     </div>
                     <button id="opt-save" style="width:100%; padding:6px; border:none; background:#fe0830; color:#fff; cursor:pointer; border-radius:4px; font-size:11px; font-weight:bold; margin-bottom:15px;">SAVE SETTINGS</button>
                     <div style="border-top:1px solid #333; padding-top:12px;">
-                        <div style="margin-bottom:8px; font-weight:bold; color:#00ccff; font-size:11px; text-transform:uppercase;">Files & Explorer</div>
+                        <div style="margin-bottom:8px; font-weight:bold; color:#00ccff; font-size:11px; text-transform:uppercase;">Configuration Files</div>
                         <button id="view-new-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-file-code"></i> plugins_data.json</button>
                         <button id="view-repo-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-database"></i> repo_data.json</button>
                     </div>
@@ -1443,7 +1460,9 @@
         try {
             const response = await fetch('/plugins/Updater/list?t=' + Date.now());
             if (!response.ok) throw new Error('Fetch error');
-            currentPlugins = await response.json();
+            const data = await response.json();
+            currentPlugins = data.plugins || data;
+            if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
 
             // Verifica discordanza versione (Cache Detection)
             const selfInfo = currentPlugins.find(p => p.name === 'Updater');
