@@ -31,9 +31,9 @@ Follow these steps to install the plugin:
 The plugin interface is **accessible only to administrators** and nothing will appear until you're logged in as an administrator. 
 You may access it in three ways:
 
-<img width="1166" height="915" alt="setup page" src="https://github.com/user-attachments/assets/fd94a700-2957-430f-a645-ef47ff3fb4fa" />
+<img width="3760" height="1745" alt="setup page" src="https://github.com/user-attachments/assets/608c376e-366e-4ca1-99a6-1d278b6c468c" />
 
-**Setup Plugins Page**. Navigate to the setup section of your webserver. In the Plugins page, just down the FM-DX-Webserver Plugin list, you will find the **Installed Plugins List**
+**Setup Plugins Page**. Navigate to the setup section of your webserver. In the Plugins page, at the bottom of the FM-DX-Webserver Plugin page, you will find the **Installed Plugins List**
 
 <img width="269" height="69" alt="header button" src="https://github.com/user-attachments/assets/2936edd5-c194-4639-a9b6-9e46eed78eae" />
 
