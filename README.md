@@ -67,8 +67,7 @@ When started for the first time, it will try to automatically retrieve the URL o
    - Detect the recommended **Local Directory** based on the plugin's frontend path.
 4. Click **Save & Install**. The updater will download the descriptor and recursively pull all required assets into the correct folders.
 
-**AFTER INSTALLING A NEW PLUGIN, YOU HAVE TO ENABLE IT IN THE SETUP MENU**
-**AND DON'T FORGET TO CLEAR THE BROWSER CACHE AND RESTART THE SERVER!**
+**AS USUAL, AFTER INSTALLING A NEW PLUGIN, YOU HAVE TO RESTART THE SERVER AND ENABLE IT IN THE SETUP MENU, THEN CLEAR THE BROWSER CACHE AND RESTART THE SERVER ONE MORE TIME!**
 
 ## Explore page
 
