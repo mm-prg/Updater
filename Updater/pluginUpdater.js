@@ -4,7 +4,7 @@
  * ************************************************
  */
 
-// branch develop 0.2.0
+// branch develop 0.2.1
 
 "use strict";
 
@@ -12,11 +12,13 @@
     const pluginVersion = '0.2.0';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
+    let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
+    let sortTimeout = null;
 
     // Resolve the owner: priority to specific override, then author override, then author, finally default
     function resolveOwner(p, allPlugins) {
         if (p.repoUrl) {
-            const match = p.repoUrl.match(/github\.com\/([^/]+)/);
+            const match = p.repoUrl.match(/github\.com\/([^/ \n?#]+)/);
             if (match) return match[1];
         }
         if (p.githubOwner) return p.githubOwner;
@@ -63,16 +65,17 @@
             const owner = resolveOwner(p, allPlugins);
             let repo = p.name.replace(/\s+/g, '-');
             if (p.repoUrl) {
-                const match = p.repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)/);
+                const match = p.repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)(?:\/tree\/([^ \n?#]+))?/);
                 if (match) repo = match[2];
             } else if (p.githubRepo) {
                 repo = p.githubRepo;
             }
 
             const filePath = p.fileUrl || p.githubPath || p.fileName || p.frontEndPath;
+            const branch = p.branch || 'main';
             
             // If filePath is a complete URL (e.g., pastebin), we use it directly
-            const url = filePath.startsWith('http') ? filePath : `https://raw.githubusercontent.com/${owner}/${repo}/main/${filePath}`;
+            const url = filePath.startsWith('http') ? filePath : `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`;
             
             // rds-ai-decoder.js uses cache: 'no-store' and a timestamp to avoid browser/proxy cache
             const res = await fetch(url + '?t=' + Date.now(), { cache: 'no-store' });
@@ -89,8 +92,6 @@
 
     async function initUpdater() {
         let currentPlugins = [];
-        // Retrieve the last saved sorting state or set the default one
-        let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
 
         // Retrieve settings from the server
         let settings = { showInPluginPanel: true, showInHeader: true, showInSetup: true, advancedMode: false };
@@ -193,6 +194,7 @@
                 <h3 class="updater-title">Installed Plugins</h3>
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <a href="https://github.com/mm-prg/Updater" target="_blank" class="updater-btn" style="background:#333; color:#fff; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; width:32px; padding:6px;" title="Updater Repository"><i class="fa-solid fa-circle-question"></i></a>
+                    <button id="updater-config-btn" class="updater-btn" style="background:#333; color:#fff; display:${settings.advancedMode ? 'inline-flex' : 'none'}; align-items:center; justify-content:center; width:32px; padding:6px;" title="Configuration Files"><i class="fa-solid fa-file-code"></i></button>
                     <button id="updater-options-btn" class="updater-btn" style="background:#333; color:#fff; display:inline-flex; align-items:center; justify-content:center; width:32px; padding:6px;" title="Options"><i class="fa-solid fa-gear"></i></button>
                     <span id="updater-version-tag" style="color: #777; font-size: 11px;">v${pluginVersion} (api left ?)</span>
                 </div>
@@ -201,16 +203,15 @@
                 <div id="updater-status" class="updater-subtitle" style="color: #3fa9f5; font-weight: bold;">Scanning...</div>
                 <div style="display: flex; gap: 10px;">
                     <button id="add-plugin-btn" class="updater-btn updater-btn-primary" style="width: fit-content;" title="Install a new plugin by providing its GitHub repository URL">Add new plugin</button>
-                    <button id="open-terminal-btn" class="updater-btn updater-btn-primary" style="width: fit-content;" title="Open server terminal">Terminal</button>
-                    <button id="view-cache-btn" class="updater-btn updater-btn-primary" style="width: fit-content;" title="View files currently in Node.js require cache">Cache</button>
                 </div>
             </div>
             
             <div id="updater-sort-controls" class="updater-list-item" style="background: transparent; border-left-color: transparent; border-bottom: 1px solid #333; border-radius: 0; margin-bottom: 10px; padding-top: 0; padding-bottom: 5px; opacity: 0.8; font-weight: bold; text-transform: uppercase; cursor: default; text-align: left;">
                 <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden; min-width: 0;">
                     <div class="updater-sort-link" data-sort="name" style="flex: 0 0 25%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Name ↕</div>
-                    <div class="updater-sort-link" data-sort="author" style="flex: 0 0 20%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Author ↕</div>
-                    <div class="updater-sort-link" data-sort="version" style="flex: 0 0 10%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Ver ↕</div>
+                    <div class="updater-sort-link" data-sort="author" style="flex: 0 0 18%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Author ↕</div>
+                    <div class="updater-sort-link" data-sort="version" style="flex: 0 0 8%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Ver ↕</div>
+                    <div class="updater-sort-link" data-sort="branch" style="flex: 0 0 12%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Branch ↕</div>
                     <div class="updater-sort-link" data-sort="status" style="flex: 1; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Status ↕</div>
                 </div>
                 <div style="width: 160px; flex-shrink: 0; margin-left: 10px; display: flex;"></div>
@@ -260,18 +261,8 @@
 
 
         document.getElementById('add-plugin-btn').onclick = () => openAddModal(currentPlugins);
-        document.getElementById('open-terminal-btn').onclick = () => openTerminalModal();
-        document.getElementById('view-cache-btn').onclick = async () => {
-            try {
-                const res = await fetch('/plugins/Updater/debug-cache?t=' + Date.now());
-                if (!res.ok) throw new Error();
-                const cache = await res.json();
-                openViewFileModal('Node_Cache.txt', cache.sort().join('\n'));
-            } catch (e) {
-                alert("Error fetching Node.js cache info.");
-            }
-        };
         document.getElementById('updater-options-btn').onclick = (event) => toggleOptionsDropdown(event);
+        document.getElementById('updater-config-btn').onclick = (event) => toggleConfigFilesDropdown(event);
             function createOpenPluginListButton(modalContainer) {
                 const btnId = 'updater-open-btn';
                 const overlay = document.getElementById(`${pluginId}-overlay`);
@@ -379,7 +370,8 @@
                 const filePath = p.fileUrl || p.githubPath || p.fileName || p.frontEndPath; 
                 
                 const fullRepoUrl = p.repoUrl || `https://github.com/${owner}/${repo}`;
-                const fullFileUrl = filePath.startsWith('http') ? filePath : `https://raw.githubusercontent.com/${owner}/${repo}/main/${filePath}`;
+                const branch = p.branch || 'main';
+                const fullFileUrl = filePath.startsWith('http') ? filePath : `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`;
                 statusCell.title = `Repository: ${fullRepoUrl}\nDescriptor: ${fullFileUrl}\nDirectory: ${p.localDir || '(root)'}`;
 
                 if (!remoteVer) {
@@ -452,6 +444,12 @@
                 }
 
                 updateStatusCell(p, remoteVer, allPlugins);
+
+                // Se l'ordinamento attivo è per status, rinfresca l'ordine man mano che arrivano i dati
+                if (sortState.key === 'status') {
+                    clearTimeout(sortTimeout);
+                    sortTimeout = setTimeout(() => sortPlugins('status', false), 500);
+                }
             }
 
             async function refreshList() {
@@ -496,7 +494,7 @@
                 let skipRecursive = false;
 
                 // Build the GitHub "raw" base URL
-                const rawBaseUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main`;
+                const rawBaseUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${p.branch || 'main'}`;
 
                 // Provide immediate visual feedback in the status cell
                 const statusId = `status-${p.name.replace(/\s+/g, '_')}`;
@@ -618,6 +616,12 @@
                         <input type="text" id="edit-file-path" value="${p.fileUrl || p.githubPath || ''}" placeholder="${p.fileName || p.frontEndPath || 'plugin.js'}" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
                     </div>
                     <div style="margin-bottom:15px;">
+                        <label style="display:block; font-size:12px; font-weight:bold;">Branch</label>
+                        <input type="text" id="edit-branch" list="edit-branch-datalist" value="${p.branch || 'main'}" placeholder="main" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;" ${!settings.advancedMode ? 'readonly' : ''}>
+                        <datalist id="edit-branch-datalist"></datalist>
+                        ${!settings.advancedMode ? '<div style="font-size:10px; color:#999; margin-top:2px;">Enable Advanced Mode to change branch.</div>' : ''}
+                    </div>
+                    <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:12px; font-weight:bold;">Local Directory (relative to plugins/)</label>
                         <input type="text" id="edit-local-dir" value="${p.localDir || ''}" placeholder="e.g. MyPluginDir" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
                     </div>
@@ -633,11 +637,13 @@
                 // Automatically detect plugin info when the "Verify" button is clicked
                 modal.querySelector('#verify-repo-btn').onclick = async () => {
                     const repoUrl = modal.querySelector('#edit-repo-url').value.trim();
-                    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)/);
+                    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)(?:\/tree\/([^ \n?#]+))?/);
                     if (!match) return alert("Please enter a valid GitHub URL first.");
 
                     const owner = match[1];
                     const repo = match[2];
+                    const urlBranch = match[3];
+                    const manualBranch = modal.querySelector('#edit-branch').value.trim();
                     const verifyBtn = modal.querySelector('#verify-repo-btn');
                     const originalHtml = verifyBtn.innerHTML;
                     
@@ -645,8 +651,26 @@
                     verifyBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
 
                     try {
+                        // Fetch available branches
+                        const branchesRes = await fetch(`/plugins/Updater/branches?repoUrl=${encodeURIComponent(repoUrl)}`);
+                        if (branchesRes.ok) {
+                            const branchList = await branchesRes.json();
+                            const dl = modal.querySelector('#edit-branch-datalist');
+                            dl.innerHTML = branchList.map(b => `<option value="${b}">`).join('');
+                            // Se il branch attuale non è nella lista o è main e esiste develop, suggerisci develop
+                            if (branchList.includes('develop') && modal.querySelector('#edit-branch').value === 'main') {
+                                modal.querySelector('#edit-branch').value = 'develop';
+                            }
+                        }
+
                         // Step 1: Check root contents to see if a 'plugins' folder exists
-                        let contentsUrl = `https://api.github.com/repos/${owner}/${repo}/contents/`;
+                        const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`);
+                        const repoInfo = await repoRes.json();
+                        const branch = urlBranch || (settings.advancedMode ? manualBranch : null) || repoInfo.default_branch || 'main';
+                        
+                        modal.querySelector('#edit-branch').value = branch;
+
+                        let contentsUrl = `https://api.github.com/repos/${owner}/${repo}/contents/?ref=${branch}`;
                         let res = await fetch(contentsUrl);
                         
                         const remaining = res.headers.get('x-ratelimit-remaining');
@@ -661,7 +685,7 @@
                         
                         if (pluginsDirItem) {
                             // Scenario: Repository has a 'plugins/' folder containing the descriptor and files
-                            res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/plugins`);
+                            res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/plugins?ref=${branch}`);
                             if (res.ok) {
                                 files = await res.json();
                             }
@@ -672,7 +696,7 @@
                         let found = false;
 
                         for (const file of jsFiles) {
-                            const rawRes = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/main/${file.path}`);
+                            const rawRes = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${file.path}`);
                             if (rawRes.ok) {
                                 const text = await rawRes.text();
                                 // A descriptor must contain the 'pluginConfig' variable
@@ -697,6 +721,7 @@
                     const repoUrl = modal.querySelector('#edit-repo-url').value.trim();
                     const fileUrl = modal.querySelector('#edit-file-path').value.trim();
                     const localDir = modal.querySelector('#edit-local-dir').value.trim();
+                    const branch = modal.querySelector('#edit-branch').value.trim();
                     
                     if (!repoUrl || !fileUrl || !localDir) {
                         return alert("All three fields (Repository URL, File Path, and Local Directory) are required.");
@@ -710,7 +735,8 @@
                                 pluginName: p.name,
                                 repoUrl: repoUrl || null,
                                 fileUrl: fileUrl || null,
-                                localDir: localDir || null
+                                localDir: localDir || null,
+                                branch: branch || null
                             })
                         });
 
@@ -723,6 +749,7 @@
                                 p.repoUrl = repoUrl || null;
                                 p.fileUrl = fileUrl || null;
                                 p.localDir = localDir || null;
+                                p.branch = branch || null;
                                 // Clean old fields if present // Force re-check
                                 delete p.githubOwner; delete p.githubRepo; delete p.githubPath;
                                 delete p.cachedRemoteVer;
@@ -772,6 +799,12 @@
                         <input type="text" id="add-file-path" placeholder="e.g. FavStations.js or Folder/Plugin.js" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
                     </div>
                     <div style="margin-bottom:15px;">
+                        <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">Branch</label>
+                        <input type="text" id="add-branch" list="add-branch-datalist" value="main" placeholder="main" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;" ${!settings.advancedMode ? 'readonly' : ''}>
+                        <datalist id="add-branch-datalist"></datalist>
+                        ${!settings.advancedMode ? '<div style="font-size:10px; color:#999; margin-top:2px;">Enable Advanced Mode to change branch.</div>' : ''}
+                    </div>
+                    <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">Local Directory (relative to plugins/)</label>
                         <input type="text" id="add-local-dir" placeholder="e.g. FavStations" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
                     </div>
@@ -806,11 +839,13 @@
                 // Automatically detect plugin info when the "Verify" button is clicked
                 modal.querySelector('#verify-repo-btn').onclick = async () => {
                     const repoUrl = modal.querySelector('#add-repo-url').value.trim();
-                    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)/);
+                    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)(?:\/tree\/([^ \n?#]+))?/);
                     if (!match) return alert("Please enter a valid GitHub URL first.");
 
                     const owner = match[1];
                     const repo = match[2];
+                    const urlBranch = match[3];
+                    const manualBranch = modal.querySelector('#add-branch').value.trim();
                     const verifyBtn = modal.querySelector('#verify-repo-btn');
                     const originalHtml = verifyBtn.innerHTML;
                     
@@ -818,8 +853,25 @@
                     verifyBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
 
                     try {
+                        // Fetch available branches
+                        const branchesRes = await fetch(`/plugins/Updater/branches?repoUrl=${encodeURIComponent(repoUrl)}`);
+                        if (branchesRes.ok) {
+                            const branchList = await branchesRes.json();
+                            const dl = modal.querySelector('#add-branch-datalist');
+                            dl.innerHTML = branchList.map(b => `<option value="${b}">`).join('');
+                            if (branchList.includes('develop')) {
+                                modal.querySelector('#add-branch').value = 'develop';
+                            }
+                        }
+
                         // Step 1: Check root contents to see if a 'plugins' folder exists
-                        let contentsUrl = `https://api.github.com/repos/${owner}/${repo}/contents/`;
+                        const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`);
+                        const repoInfo = await repoRes.json();
+                        const branch = urlBranch || (settings.advancedMode ? manualBranch : null) || repoInfo.default_branch || 'main';
+                        
+                        modal.querySelector('#add-branch').value = branch;
+
+                        let contentsUrl = `https://api.github.com/repos/${owner}/${repo}/contents/?ref=${branch}`;
                         let res = await fetch(contentsUrl);
 
                         const remaining = res.headers.get('x-ratelimit-remaining');
@@ -847,7 +899,7 @@
                         
                         if (pluginsDirItem) {
                             // Scenario: Repository has a 'plugins/' folder containing the descriptor and files
-                            res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/plugins`);
+                            res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/plugins?ref=${branch}`);
                             if (res.ok) {
                                 files = await res.json();
                             }
@@ -858,7 +910,7 @@
                         let found = false;
 
                         for (const file of jsFiles) {
-                            const rawRes = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/main/${file.path}`);
+                            const rawRes = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${file.path}`);
                             if (rawRes.ok) {
                                 const text = await rawRes.text();
                                 // A descriptor must contain the 'pluginConfig' variable
@@ -867,11 +919,17 @@
                                     
                                     // Attempt to guess the local directory by reading the frontEndPath metadata
                                     const feMatch = text.match(/frontEndPath\s*:\s*['"]([^'"]+)['"]/);
-                                    if (feMatch && feMatch[1].includes('/')) {
-                                        modal.querySelector('#add-local-dir').value = feMatch[1].split('/')[0];
-                                    } else {
-                                        modal.querySelector('#add-local-dir').value = ""; // Descriptor and files are in root
+                                    let suggestedDir = (feMatch && feMatch[1].includes('/')) ? feMatch[1].split('/')[0] : "";
+                                    
+                                    // Se stiamo scaricando da un branch specifico tramite URL, rendiamo separata l'installazione
+                                    if (urlBranch) {
+                                        const suffix = `-${urlBranch}`;
+                                        if (suggestedDir) suggestedDir += suffix;
+                                        // Modifichiamo anche il file descrittore per non collidere in /plugins/
+                                        const baseName = file.name.endsWith('.js') ? file.name.slice(0, -3) : file.name;
+                                        modal.querySelector('#add-file-path').value = file.path;
                                     }
+                                    modal.querySelector('#add-local-dir').value = suggestedDir;
                                     found = true;
                                     break;
                                 }
@@ -891,13 +949,14 @@
                     const repoUrl = modal.querySelector('#add-repo-url').value.trim();
                     const manualFilePath = modal.querySelector('#add-file-path').value.trim();
                     const localDir = modal.querySelector('#add-local-dir').value.trim();
+                    const branch = modal.querySelector('#add-branch').value.trim();
 
                     // Basic validation to ensure all required fields are populated
                     if (!repoUrl || !manualFilePath || !localDir) {
                         return alert("All three fields are required.");
                     }
 
-                    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)/);
+                    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)(?:\/tree\/([^ \n?#]+))?/);
                     if (!match) return alert("Invalid GitHub URL. Use: https://github.com/owner/repository");
 
                     const owner = match[1];
@@ -911,7 +970,7 @@
                     let descriptorText = "";
                     const foundFileUrl = manualFilePath;
 
-                    const testUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/${foundFileUrl}`;
+                    const testUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${foundFileUrl}`;
                     try {
                         const res = await fetch(testUrl);
                         if (res.ok) {
@@ -945,7 +1004,8 @@
                                 pluginName: pluginName,
                                 repoUrl: repoUrl,
                                 fileUrl: foundFileUrl,
-                                localDir: localDir
+                                localDir: localDir,
+                                branch: branch
                             })
                         });
 
@@ -959,7 +1019,7 @@
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                     pluginName: pluginName,
-                                    rawBaseUrl: `https://raw.githubusercontent.com/${owner}/${repo}/main`,
+                                    rawBaseUrl: `https://raw.githubusercontent.com/${owner}/${repo}/${branch}`,
                                     remoteDescriptorPath: foundFileUrl,
                                     localDescriptorName: foundFileUrl.split('/').pop(),
                                     frontEndPath: fePath,
@@ -1034,11 +1094,6 @@
                         <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer; color:#ffaa00;"><input type="checkbox" id="opt-advanced-mode" ${currentSettings.advancedMode ? 'checked' : ''}> Advanced Mode (Explore Files)</label>
                     </div>
                     <button id="opt-save" style="width:100%; padding:6px; border:none; background:#fe0830; color:#fff; cursor:pointer; border-radius:4px; font-size:11px; font-weight:bold; margin-bottom:15px;">SAVE SETTINGS</button>
-                    <div style="border-top:1px solid #333; padding-top:12px;">
-                        <div style="margin-bottom:8px; font-weight:bold; color:#00ccff; font-size:11px; text-transform:uppercase;">Configuration Files</div>
-                        <button id="view-new-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-file-code"></i> plugins_data.json</button>
-                        <button id="view-repo-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-database"></i> repo_data.json</button>
-                    </div>
                 `;
                 document.body.appendChild(dropdown);
                 const dRect = dropdown.getBoundingClientRect();
@@ -1065,7 +1120,7 @@
                         });
                         if (res.ok) {
                             dropdown.remove();
-                            alert("Settings saved. Reloading...");
+                            alert("Settings saved");
                             location.reload();
                         }
                     } catch (e) { alert("Error saving settings."); }
@@ -1085,6 +1140,72 @@
                         openViewFileModal('repo_data.json', await res.text());
                         dropdown.remove();
                     } catch (e) { alert("Error reading file."); }
+                };
+            }
+
+            async function toggleConfigFilesDropdown(event) {
+                const existing = document.getElementById('updater-config-files-dropdown');
+                if (existing) {
+                    existing.remove();
+                    return;
+                }
+                event.stopPropagation();
+                const btn = event.currentTarget;
+                const rect = btn.getBoundingClientRect();
+
+                const dropdown = document.createElement('div');
+                dropdown.id = 'updater-config-files-dropdown';
+                dropdown.style.cssText = `position:fixed; top:${rect.bottom + 5}px; left:${rect.left}px; background:#1a1a1a; border:1px solid #444; border-radius:4px; padding:12px; z-index:100002; width:260px; box-shadow:0 4px 20px rgba(0,0,0,0.8); color:#fff; font-size:13px;`;
+                dropdown.innerHTML = `
+                    <div style="margin-bottom:8px; font-weight:bold; color:#00ccff; font-size:11px; text-transform:uppercase;">Configuration Files</div>
+                    <button id="view-new-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-file-code"></i> plugins_data.json</button>
+                    <button id="view-repo-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-database"></i> repo_data.json</button>
+                    
+                    <div style="margin:12px 0 8px 0; border-top:1px solid #333; padding-top:12px; font-weight:bold; color:#ffaa00; font-size:11px; text-transform:uppercase;">Advanced Tools</div>
+                    <button id="menu-terminal-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-terminal"></i> Terminal</button>
+                    <button id="menu-cache-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-memory"></i> Node.js Cache</button>
+                `;
+                document.body.appendChild(dropdown);
+                const dRect = dropdown.getBoundingClientRect();
+                if (dRect.right > window.innerWidth) dropdown.style.left = (window.innerWidth - dRect.width - 10) + 'px';
+                const closeDropdown = (e) => {
+                    if (!dropdown.contains(e.target) && e.target !== btn) {
+                        dropdown.remove();
+                        document.removeEventListener('click', closeDropdown);
+                    }
+                };
+                setTimeout(() => document.addEventListener('click', closeDropdown), 0);
+                
+                dropdown.querySelector('#view-new-data-btn').onclick = async () => {
+                    try {
+                        const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent('Updater/plugins_data.json')}`);
+                        if (!res.ok) throw new Error();
+                        openViewFileModal('plugins_data.json', await res.text());
+                        dropdown.remove();
+                    } catch (e) { alert("Error reading file."); }
+                };
+                dropdown.querySelector('#view-repo-data-btn').onclick = async () => {
+                    try {
+                        const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent('Updater/repo_data.json')}`);
+                        if (!res.ok) throw new Error();
+                        openViewFileModal('repo_data.json', await res.text());
+                        dropdown.remove();
+                    } catch (e) { alert("Error reading file."); }
+                };
+                dropdown.querySelector('#menu-terminal-btn').onclick = () => {
+                    openTerminalModal();
+                    dropdown.remove();
+                };
+                dropdown.querySelector('#menu-cache-btn').onclick = async () => {
+                    try {
+                        const res = await fetch('/plugins/Updater/debug-cache?t=' + Date.now());
+                        if (!res.ok) throw new Error();
+                        const cache = await res.json();
+                        openViewFileModal('Node_Cache.txt', cache.sort().join('\n'));
+                        dropdown.remove();
+                    } catch (e) {
+                        alert("Error fetching Node.js cache info.");
+                    }
                 };
             }
 
@@ -1513,11 +1634,14 @@
                 li.innerHTML = `
                     <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden; min-width: 0;">
                         <div class="updater-title" style="flex: 0 0 25%; color: #3fa9f5; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; min-width: 0; text-align: left !important;" title="${p.fullPath || ''}">${p.name || 'Unknown'}</div>
-                        <div class="updater-subtitle" style="flex: 0 0 20%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
+                        <div class="updater-subtitle" style="flex: 0 0 18%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
                             ${p.author || 'Unknown'}
                         </div>
-                        <div class="updater-subtitle" style="flex: 0 0 10%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
+                        <div class="updater-subtitle" style="flex: 0 0 8%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
                             v<span style="color: #fff;">${p.version || '??'}</span>
+                        </div>
+                        <div class="updater-subtitle" style="flex: 0 0 12%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
+                            <span style="color: #777;"><i class="fa-solid fa-code-branch" style="font-size: 10px;"></i> ${p.branch || 'main'}</span>
                         </div>
                         <div id="status-${p.name.replace(/\s+/g, '_')}" style="flex: 1; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
                             <span style="color: #666; font-style: italic;">Checking...</span>
@@ -1579,33 +1703,36 @@
                     sortState.asc = !sortState.asc;
                 } else {
                     sortState.key = key;
-                    sortState.asc = true;
+                    // Per lo stato, il primo click attiva l'ordinamento discendente (Update in cima)
+                    sortState.asc = (key === 'status' ? false : true);
                 }
             }
             // Store key and direction in the browser
             localStorage.setItem('updater-sort-state', JSON.stringify(sortState));
             
             currentPlugins.sort((a, b) => {
-                let cmp = 0;
                 if (key === 'status') {
-                    // Define a rank for the status: 1: Update, 2: OK, 3: Error/Not found, 4: In progress // If they have the same rank, sort by name
+                    // Rank: 4: Update, 3: OK, 2: Error, 1: In progress
                     const getRank = (p) => {
-                        if (p.cachedRemoteVer === undefined) return 4;
-                        if (p.cachedRemoteVer === null) return 3;
-                        if (isNewer(p.version || "0.0.0", p.cachedRemoteVer)) return 1;
-                        return 2;
+                        if (isNewer(p.version || "0.0.0", p.cachedRemoteVer)) return 4;
+                        if (p.cachedRemoteVer !== null && p.cachedRemoteVer !== undefined) return 3;
+                        if (p.cachedRemoteVer === null) return 2;
+                        return 1;
                     };
                     const rankA = getRank(a);
-                    const rankB = getRank(b); // Store key and direction in the browser
-                    cmp = rankA - rankB;
-                    // If they have the same rank, sort by name
-                    if (cmp === 0) cmp = (a.name || '').localeCompare(b.name || '');
+                    const rankB = getRank(b);
+                    
+                    if (rankA !== rankB) {
+                        return sortState.asc ? (rankA - rankB) : (rankB - rankA);
+                    }
+                    // A parità di rank, ordina sempre per nome A-Z
+                    return (a.name || '').localeCompare(b.name || '');
                 } else {
-                    let valA = a[sortState.key] || '';
-                    let valB = b[sortState.key] || '';
-                    cmp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+                    let valA = a[key] || '';
+                    let valB = b[key] || '';
+                    let cmp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+                    return sortState.asc ? cmp : -cmp;
                 }
-                return sortState.asc ? cmp : -cmp;
             });
             renderPluginRows();
         }
@@ -1636,7 +1763,7 @@
             document.querySelectorAll('.updater-sort-link').forEach(link => {
                 link.onclick = () => sortPlugins(link.dataset.sort);
             });
-            sortPlugins('status');
+            sortPlugins(sortState.key, false);
             status.textContent = `Detected ${currentPlugins.length} plugins installed in the system.`;
         } catch (e) {
             console.error('[Updater] UI Error:', e);

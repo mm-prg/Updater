@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.2.0)
+ * Updater Plugin for FM-DX Webserver (v. 0.2.1)
  * ************************************************
  */
 
@@ -150,12 +150,16 @@ const fetchGithubApi = (url) => new Promise((resolve, reject) => {
  * Automatically discovers descriptor file and local directory from a GitHub repository.
  */
 async function discoverMetadataFromRepo(repoUrl) {
-    // Check rate limit status before starting a discovery process
-    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)/);
+    // Supporta branch complessi con slash (es. /tree/feature/fix)
+    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)(?:\/tree\/([^ \n?#]+))?/);
     if (!match) return null;
-    const [_, owner, repo] = match;
+    const [_, owner, repo, urlBranch] = match;
 
     try {
+        // Fetch repository info to get the default branch
+        const repoInfo = await fetchGithubApi(`https://api.github.com/repos/${owner}/${repo}`).catch(() => null);
+        const branch = urlBranch || repoInfo?.default_branch || 'main';
+
         // Pre-check rate limit using a lightweight head/get if possible, 
         // but here we just try to fetch and let fetchGithubApi log the remaining calls.
         const rateCheck = await fetchGithubApi(`https://api.github.com/rate_limit`).catch(() => null);
@@ -164,20 +168,21 @@ async function discoverMetadataFromRepo(repoUrl) {
             return null;
         }
 
-        let contents = await fetchGithubApi(`https://api.github.com/repos/${owner}/${repo}/contents/`);
+        let contents = await fetchGithubApi(`https://api.github.com/repos/${owner}/${repo}/contents/?ref=${branch}`);
         if (!Array.isArray(contents)) return null;
 
         const pluginsDirItem = contents.find(f => f.name.toLowerCase() === 'plugins' && f.type === 'dir');
         if (pluginsDirItem) {
-            const pContents = await fetchGithubApi(`https://api.github.com/repos/${owner}/${repo}/contents/plugins`);
+            const pContents = await fetchGithubApi(`https://api.github.com/repos/${owner}/${repo}/contents/plugins?ref=${branch}`);
             if (Array.isArray(pContents)) contents = pContents;
         }
 
         const jsFiles = contents.filter(f => f.name.endsWith('.js') && f.name !== 'index.js' && !f.name.includes('.frontend.'));
         for (const file of jsFiles) {
-            const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/${file.path}`;
+            const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${file.path}`;
             const text = await new Promise((resolve) => {
-                https.get(rawUrl, { headers: { 'User-Agent': 'FM-DX-Webserver-Updater' } }, res => {
+                const options = { headers: { 'User-Agent': 'FM-DX-Webserver-Updater', 'Cache-Control': 'no-cache' } };
+                https.get(rawUrl, options, res => {
                     let d = ''; res.on('data', c => d += c); res.on('end', () => resolve(d));
                 }).on('error', () => resolve(''));
             });
@@ -185,7 +190,7 @@ async function discoverMetadataFromRepo(repoUrl) {
             if (text.includes('pluginConfig')) {
                 const feMatch = text.match(/frontEndPath\s*:\s*['"]([^'"]+)['"]/);
                 const localDir = (feMatch && feMatch[1].includes('/')) ? feMatch[1].split('/')[0] : "";
-                return { fileUrl: file.path, localDir };
+                return { fileUrl: file.path, localDir, branch };
             }
         }
     } catch (e) {
@@ -226,6 +231,23 @@ endpointsRouter.get('/plugins/Updater/rate-limit', (req, res) => {
 });
 
 /**
+ * Endpoint to fetch all branches of a repository
+ */
+endpointsRouter.get('/plugins/Updater/branches', async (req, res) => {
+    const { repoUrl } = req.query;
+    const match = repoUrl?.match(/github\.com\/([^/]+)\/([^/ \n?#]+)(?:\/tree\/([^ \n?#]+))?/);
+    if (!match) return res.status(400).json({ error: "Invalid repository URL" });
+    const [_, owner, repo] = match;
+
+    try {
+        const branches = await fetchGithubApi(`https://api.github.com/repos/${owner}/${repo}/branches`);
+        res.json(Array.isArray(branches) ? branches.map(b => b.name) : []);
+    } catch (e) {
+        res.status(500).json({ error: "Could not fetch branches", details: e.message });
+    }
+});
+
+/**
  * Endpoint di debug per visualizzare i file caricati nella cache di Node.js
  */
 endpointsRouter.get('/plugins/Updater/debug-cache', (req, res) => {
@@ -261,7 +283,7 @@ endpointsRouter.post('/plugins/Updater/settings', express.json(), (req, res) => 
  */
 endpointsRouter.post('/plugins/Updater/save-override', express.json(), (req, res) => {
     try {
-        const { pluginName: name, repoUrl, fileUrl, localDir, downloadedFiles, notDownloadedFiles } = req.body; // Merge new data with existing ones to avoid losing information
+        const { pluginName: name, repoUrl, fileUrl, localDir, branch, downloadedFiles, notDownloadedFiles } = req.body; // Merge new data with existing ones to avoid losing information
 
         // Se il plugin ha un URL repository e non è ancora presente in repo_data.json, lo aggiungiamo
         const rawStatic = readJsonFile(repoDataPath);
@@ -287,6 +309,7 @@ endpointsRouter.post('/plugins/Updater/save-override', express.json(), (req, res
             ...(repoUrl !== undefined && repoUrl !== null && { repoUrl }),
             ...(fileUrl !== undefined && fileUrl !== null && { fileUrl }),
             ...(localDir !== undefined && { localDir }),
+            ...(branch !== undefined && { branch }),
             ...(downloadedFiles !== undefined && { downloadedFiles }),
             ...(notDownloadedFiles !== undefined && { notDownloadedFiles })
         };
@@ -308,9 +331,8 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json(), async (re
     try {
         logInfo(`[Updater] Updating plugin: ${pluginName} from ${rawBaseUrl}`);
         
-        // Parse the rawBaseUrl to extract Owner, Repo, and Branch
-        // Example rawBaseUrl: https://raw.githubusercontent.com/mm-prg/FavStations/main
-        const repoMatch = rawBaseUrl.match(/github(?:usercontent)?\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)/);
+        // Cattura l'intero branch, anche se contiene slash
+        const repoMatch = rawBaseUrl.match(/github(?:usercontent)?\.com\/([^\/]+)\/([^\/]+)\/(.+)/);
         if (!repoMatch) throw new Error("Invalid repository URL format");
         const [_, owner, repo, branch] = repoMatch;
 
@@ -597,7 +619,6 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                 // Exclude system files or scripts that are clearly frontend only
                 if (fs.statSync(filePath).isFile() && file !== 'index.js' && !file.includes('.frontend.')) {
                     try { // Clear require cache to read any live changes
-                        // Clear require cache to read any live changes
                         const resolvedPath = require.resolve(filePath);
                         delete require.cache[resolvedPath]; // Calculate default local directory (where the frontend resides)
                         const pluginModule = require(filePath);
@@ -611,7 +632,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                             let repoUrl = (dyn && dyn.repoUrl) ? dyn.repoUrl : (config.repoUrl || stat.repoUrl);
 
                             // Automazione richiesta: se abbiamo il repo ma mancano i dettagli (fileUrl/localDir), ricava da GitHub
-                            if (repoUrl && (!dyn.fileUrl || dyn.localDir === undefined)) {
+                            if (repoUrl && (!dyn.branch || !dyn.fileUrl || dyn.localDir === undefined)) {
                                 logInfo(`[${pluginName}] Attempting auto-discovery for ${name} at ${repoUrl}`);
                                 const discovered = await discoverMetadataFromRepo(repoUrl);
                                 if (discovered) {
@@ -636,6 +657,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                                 fileName: file,
                                 fullPath: filePath,
                                 ...dyn,
+                                branch: dyn.branch || config.branch || stat.branch || 'main',
                                 repoUrl: repoUrl,
                                 localDir: dyn.localDir !== undefined ? dyn.localDir : (config.localDir || defaultLocalDir)
                             });
