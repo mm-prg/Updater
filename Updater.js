@@ -1,7 +1,9 @@
+// branch develop 0.2.0
+
 // Plugin configuration, this is used in the administration when plugins are loaded
 var pluginConfig = {
     name: 'Updater',
-    version: '0.1.0',
+    version: '0.2.0',
     author: 'mm-prg',
     frontEndPath: 'Updater/pluginUpdater.js'
 } 

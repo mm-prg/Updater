@@ -1,13 +1,16 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.1.0)
+ * Updater Plugin for FM-DX Webserver (v. 0.2.0)
  * ************************************************
  */
+
+// branch develop 0.2.0
 
 "use strict";
 
 const fs = require('fs');
 const path = require('path');
+const { exec } = require('child_process');
 const express = require('express');
 const https = require('https');
 const endpointsRouter = require('../../server/endpoints');
@@ -223,11 +226,21 @@ endpointsRouter.get('/plugins/Updater/rate-limit', (req, res) => {
 });
 
 /**
+ * Endpoint di debug per visualizzare i file caricati nella cache di Node.js
+ */
+endpointsRouter.get('/plugins/Updater/debug-cache', (req, res) => {
+    // Restituisce un array con i percorsi assoluti di tutti i moduli attualmente in cache
+    const cacheKeys = Object.keys(require.cache);
+    logInfo(`[${pluginName}] Debug: Ispezione cache richiesta. ${cacheKeys.length} file in cache.`);
+    res.json(cacheKeys);
+});
+
+/**
  * Endpoint to retrieve global plugin options
  */
 endpointsRouter.get('/plugins/Updater/settings', (req, res) => {
     const settings = readJsonFile(settingsPath);
-    res.json(settings.showInPluginPanel !== undefined ? settings : { showInPluginPanel: true, showInHeader: true, showInSetup: true });
+    res.json(settings.showInPluginPanel !== undefined ? settings : { showInPluginPanel: true, showInHeader: true, showInSetup: true, advancedMode: false });
 });
 
 /**
@@ -528,6 +541,34 @@ endpointsRouter.post('/plugins/Updater/delete-plugin', express.json(), (req, res
         logError(`[Updater] Deletion failed for ${pluginName}:`, e);
         res.status(500).json({ ok: false, error: e.message });
     }
+});
+
+/**
+ * Endpoint to execute shell commands on the server.
+ * WARNING: This endpoint is highly sensitive and must be protected by strong authentication
+ * and authorization checks to ensure only trusted administrators can access it.
+ * The current implementation assumes the main server's middleware handles admin authentication.
+ */
+endpointsRouter.post('/plugins/Updater/terminal-command', express.json(), (req, res) => {
+    // TODO: Implement robust server-side authentication and authorization checks here.
+    // This is a critical security vulnerability if not properly protected.
+    // Example: if (!req.user || !req.user.isAdmin) { return res.status(403).json({ ok: false, error: 'Unauthorized' }); }
+
+    const { command } = req.body;
+    if (!command) {
+        // Restituisce la directory di lavoro corrente se non viene fornito alcun comando
+        return res.json({ ok: true, stdout: '', stderr: '', cwd: process.cwd() });
+    }
+
+    logInfo(`[${pluginName}] Executing command: "${command}"`);
+    exec(command, (error, stdout, stderr) => {
+        if (error) {
+            logError(`[${pluginName}] Command execution failed: ${error.message}`);
+            return res.json({ ok: false, error: error.message, stdout, stderr, cwd: process.cwd() });
+        }
+        logInfo(`[${pluginName}] Command executed successfully.`);
+        res.json({ ok: true, stdout, stderr, cwd: process.cwd() });
+    });
 });
 
 /**

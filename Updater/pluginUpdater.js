@@ -4,10 +4,12 @@
  * ************************************************
  */
 
+// branch develop 0.2.0
+
 "use strict";
 
 (() => {
-    const pluginVersion = '0.1.0';
+    const pluginVersion = '0.2.0';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
 
@@ -91,18 +93,18 @@
         let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
 
         // Retrieve settings from the server
-        let settings = { showInPluginPanel: true, showInHeader: true, showInSetup: true };
+        let settings = { showInPluginPanel: true, showInHeader: true, showInSetup: true, advancedMode: false };
         try {
             const settingsRes = await fetch('/plugins/Updater/settings?t=' + Date.now());
             if (settingsRes.ok) {
                 const data = await settingsRes.json();
-                // Migrazione o caricamento nuovi parametri
-                if (data.showInPluginPanel !== undefined) {
-                    settings = data;
-                } else if (data.visibility) {
-                    settings.showInSetup = (data.visibility === 'both' || data.visibility === 'setup');
-                    settings.showInPluginPanel = settings.showInHeader = (data.visibility === 'both' || data.visibility === 'main');
-                }
+                // Caricamento parametri con fallback per migrazione da versioni precedenti
+                settings = {
+                    showInPluginPanel: data.showInPluginPanel ?? (data.visibility === 'both' || data.visibility === 'main' || true),
+                    showInHeader: data.showInHeader ?? (data.visibility === 'both' || data.visibility === 'main' || true),
+                    showInSetup: data.showInSetup ?? (data.visibility === 'both' || data.visibility === 'setup' || true),
+                    advancedMode: data.advancedMode ?? false
+                };
             }
         } catch (e) {}
 
@@ -197,7 +199,11 @@
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                 <div id="updater-status" class="updater-subtitle" style="color: #3fa9f5; font-weight: bold;">Scanning...</div>
-                <button id="add-plugin-btn" class="updater-btn updater-btn-primary" style="width: fit-content;" title="Install a new plugin by providing its GitHub repository URL">Add new plugin</button>
+                <div style="display: flex; gap: 10px;">
+                    <button id="add-plugin-btn" class="updater-btn updater-btn-primary" style="width: fit-content;" title="Install a new plugin by providing its GitHub repository URL">Add new plugin</button>
+                    <button id="open-terminal-btn" class="updater-btn updater-btn-primary" style="width: fit-content;" title="Open server terminal">Terminal</button>
+                    <button id="view-cache-btn" class="updater-btn updater-btn-primary" style="width: fit-content;" title="View files currently in Node.js require cache">Cache</button>
+                </div>
             </div>
             
             <div id="updater-sort-controls" class="updater-list-item" style="background: transparent; border-left-color: transparent; border-bottom: 1px solid #333; border-radius: 0; margin-bottom: 10px; padding-top: 0; padding-bottom: 5px; opacity: 0.8; font-weight: bold; text-transform: uppercase; cursor: default; text-align: left;">
@@ -211,6 +217,10 @@
             </div>
 
             <ul id="updater-list-body" class="updater-list"></ul>
+
+            <div style="font-size: 11px; color: #666; margin-top: 15px; padding-top: 10px; border-top: 1px solid #333; text-align: center;">
+                <i class="fa-solid fa-circle-info"></i> <b>Tip:</b> Use <b>Edit</b> to link a GitHub repository, then <b>Update</b> to sync files. <b>Explore</b> allows you to manage local files.
+            </div>
         `;
 
         // Insertion into the Webserver UI
@@ -250,6 +260,17 @@
 
 
         document.getElementById('add-plugin-btn').onclick = () => openAddModal(currentPlugins);
+        document.getElementById('open-terminal-btn').onclick = () => openTerminalModal();
+        document.getElementById('view-cache-btn').onclick = async () => {
+            try {
+                const res = await fetch('/plugins/Updater/debug-cache?t=' + Date.now());
+                if (!res.ok) throw new Error();
+                const cache = await res.json();
+                openViewFileModal('Node_Cache.txt', cache.sort().join('\n'));
+            } catch (e) {
+                alert("Error fetching Node.js cache info.");
+            }
+        };
         document.getElementById('updater-options-btn').onclick = (event) => toggleOptionsDropdown(event);
             function createOpenPluginListButton(modalContainer) {
                 const btnId = 'updater-open-btn';
@@ -993,7 +1014,7 @@
                 event.stopPropagation();
                 const btn = event.currentTarget;
                 const rect = btn.getBoundingClientRect();
-                let currentSettings = { showInPluginPanel: true, showInHeader: true, showInSetup: true };
+                let currentSettings = { showInPluginPanel: true, showInHeader: true, showInSetup: true, advancedMode: false };
                 try {
                     const res = await fetch('/plugins/Updater/settings');
                     if (res.ok) {
@@ -1010,6 +1031,7 @@
                         <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="opt-show-panel" ${currentSettings.showInPluginPanel ? 'checked' : ''}> Plugin Panel</label>
                         <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="opt-show-header" ${currentSettings.showInHeader ? 'checked' : ''}> Header Button</label>
                         <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="opt-show-setup" ${currentSettings.showInSetup ? 'checked' : ''}> Setup Table</label>
+                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer; color:#ffaa00;"><input type="checkbox" id="opt-advanced-mode" ${currentSettings.advancedMode ? 'checked' : ''}> Advanced Mode (Explore Files)</label>
                     </div>
                     <button id="opt-save" style="width:100%; padding:6px; border:none; background:#fe0830; color:#fff; cursor:pointer; border-radius:4px; font-size:11px; font-weight:bold; margin-bottom:15px;">SAVE SETTINGS</button>
                     <div style="border-top:1px solid #333; padding-top:12px;">
@@ -1032,7 +1054,8 @@
                     const newSettings = {
                         showInPluginPanel: dropdown.querySelector('#opt-show-panel').checked,
                         showInHeader: dropdown.querySelector('#opt-show-header').checked,
-                        showInSetup: dropdown.querySelector('#opt-show-setup').checked
+                        showInSetup: dropdown.querySelector('#opt-show-setup').checked,
+                        advancedMode: dropdown.querySelector('#opt-advanced-mode').checked
                     };
                     try {
                         const res = await fetch('/plugins/Updater/settings', {
@@ -1385,6 +1408,99 @@
                 document.body.appendChild(overlay);
             }
 
+            function openTerminalModal() {
+                const overlay = document.createElement('div');
+                overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:100000; display:flex; align-items:center; justify-content:center; color:#000;';
+                
+                const modal = document.createElement('div');
+                modal.style.cssText = 'background:#1a1a1a; padding:20px; border-radius:8px; width:90%; max-width:800px; height:70vh; box-shadow:0 10px 25px rgba(0,0,0,0.5); display:flex; flex-direction:column;';
+                modal.innerHTML = `
+                    <h3 style="margin-top:0; color:#fff; border-bottom:1px solid #333; padding-bottom:10px;">Server Terminal <span style="font-size:12px; color:#ffaa00;">(Admin Only - Use with Caution!)</span></h3>
+                    <pre id="terminal-output" style="flex-grow:1; background:#000; color:#0f0; padding:10px; border-radius:4px; overflow-y:auto; font-family:monospace; font-size:13px; margin-bottom:10px; border:1px solid #333;">Welcome to the server terminal. Type 'help' for basic commands (if available on server).</pre>
+                    <div style="font-size: 11px; color: #bbb; margin-bottom: 10px; background: #252525; padding: 10px; border-radius: 4px; border-left: 3px solid #3fa9f5; line-height: 1.4;">
+                        <i class="fa-solid fa-terminal" style="color:#3fa9f5; margin-right:5px;"></i> 
+                        <b>Environment:</b> Windows (CMD.exe). Use commands like <code>dir</code>, <code>copy</code>, <code>del</code>, <code>tasklist</code> or <code>ping</code>.<br>
+                        <b>Note:</b> Each command is independent. To change directory and run a command, use <code>&&</code> (e.g.: <code>cd plugins && dir</code>).
+                    </div>
+                    <pre id="terminal-output" style="flex-grow:1; background:#000; color:#0f0; padding:10px; border-radius:4px; overflow-y:auto; font-family:monospace; font-size:13px; margin-bottom:10px; border:1px solid #333;">Welcome to the server terminal.</pre>
+                    <div style="display:flex; gap:10px; align-items:center; background:#333; padding:5px; border-radius:4px; border:1px solid #555;">
+                        <span id="terminal-prompt-path" style="color:#3fa9f5; font-family:monospace; font-size:13px; padding-left:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:250px;">... ></span>
+                        <input type="text" id="terminal-input" placeholder="Enter command..." style="flex-grow:1; background:transparent; color:#fff; border:none; outline:none; padding:8px; font-family:monospace; font-size:13px;">
+                        <button id="terminal-send-btn" class="updater-btn updater-btn-primary" style="width:auto; padding:8px 15px;">Send</button>
+                        <button id="terminal-clear-btn" class="updater-btn" style="background:#444; color:#fff; width:auto; padding:8px 15px;">Clear</button>
+                    </div>
+                    <button id="terminal-close-btn" class="updater-btn" style="background:#fe0830; color:#fff; margin-top:15px; padding:8px 15px;">Close</button>
+                `;
+
+                overlay.appendChild(modal);
+                document.body.appendChild(overlay);
+
+                const terminalOutput = modal.querySelector('#terminal-output');
+                const terminalInput = modal.querySelector('#terminal-input');
+                const terminalSendBtn = modal.querySelector('#terminal-send-btn');
+                const terminalClearBtn = modal.querySelector('#terminal-clear-btn');
+                const terminalCloseBtn = modal.querySelector('#terminal-close-btn');
+                const terminalPromptPath = modal.querySelector('#terminal-prompt-path');
+
+                const appendOutput = (text, color = '#0f0') => {
+                    const span = document.createElement('span');
+                    span.style.color = color;
+                    span.textContent = text + '\n';
+                    terminalOutput.appendChild(span);
+                    terminalOutput.scrollTop = terminalOutput.scrollHeight;
+                };
+
+                const updatePrompt = (path) => {
+                    terminalPromptPath.textContent = (path || '') + ' >';
+                };
+
+                const executeCommand = async () => {
+                    const command = terminalInput.value.trim();
+                    if (!command) return;
+
+                    appendOutput(`> ${command}`, '#fff');
+                    terminalInput.value = '';
+                    terminalSendBtn.disabled = true;
+                    terminalSendBtn.textContent = 'Executing...';
+
+                    try {
+                        const res = await fetch('/plugins/Updater/terminal-command', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ command })
+                        });
+                        const data = await res.json();
+                        if (data.cwd) updatePrompt(data.cwd);
+                        if (data.ok) {
+                            appendOutput(data.stdout, '#0f0');
+                            if (data.stderr) appendOutput(data.stderr, '#ffaa00');
+                        } else {
+                            appendOutput(`Error: ${data.error || 'Unknown error'}`, '#fe0830');
+                            if (data.stderr) appendOutput(data.stderr, '#ffaa00');
+                        }
+                    } catch (e) {
+                        appendOutput(`Connection error: ${e.message}`, '#fe0830');
+                    } finally {
+                        terminalSendBtn.disabled = false;
+                        terminalSendBtn.textContent = 'Send';
+                    }
+                };
+
+                // Caricamento iniziale della posizione corrente
+                fetch('/plugins/Updater/terminal-command', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: '' })
+                }).then(res => res.json()).then(data => {
+                    if (data.cwd) updatePrompt(data.cwd);
+                }).catch(() => updatePrompt('server'));
+
+                terminalInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') executeCommand(); });
+                terminalSendBtn.onclick = executeCommand;
+                terminalClearBtn.onclick = () => { terminalOutput.innerHTML = ''; appendOutput('Terminal cleared.', '#888'); };
+                terminalCloseBtn.onclick = () => overlay.remove();
+            }
+
         function renderPluginRows() {
             const tbody = document.getElementById('updater-list-body');
             if (!tbody) return;
@@ -1410,7 +1526,7 @@
                     <div style="width: 160px; flex-shrink: 0; margin-left: 10px; display: flex; justify-content: flex-end;">
                         <div class="actions-container" style="display: flex; gap: 4px; align-items: center;">
                             <button class="updater-btn updater-btn-small updater-edit-btn" style="background:#444; color:#fff;" title="Modify GitHub repository, file paths, or local directory for this plugin">Edit</button>
-                            <button class="updater-btn updater-btn-small updater-explore-btn" style="background:#444; color:#fff;" title="Browse and manage plugin files, view code, or edit configurations">Explore</button>
+                            ${settings.advancedMode ? '<button class="updater-btn updater-btn-small updater-explore-btn" style="background:#444; color:#fff;" title="Browse and manage plugin files, view code, or edit configurations">Explore</button>' : ''}
                             <button class="updater-btn updater-btn-small updater-delete-btn" style="background:#444; color:#fff;" title="Completely remove this plugin and its files from the server">Delete</button>
                         </div>
                     </div>
@@ -1441,7 +1557,8 @@
                     }
                 };
 
-                li.querySelector('.updater-explore-btn').onclick = viewFileAction;
+                const exploreBtn = li.querySelector('.updater-explore-btn');
+                if (exploreBtn) exploreBtn.onclick = viewFileAction;
 
                 const delBtn = li.querySelector('.updater-delete-btn');
                 if (delBtn) delBtn.onclick = () => performDelete(p);
