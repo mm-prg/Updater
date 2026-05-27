@@ -4,12 +4,12 @@
  * ************************************************
  */
 
-// branch develop 0.2.1
+// branch develop
 
 "use strict";
 
 (() => {
-    const pluginVersion = '0.2.0';
+    const pluginVersion = '0.2.2';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -391,21 +391,33 @@
                     const actionsContainer = statusCell.closest('li')?.querySelector('.actions-container');
                     if (actionsContainer) {
                         const isUpdate = isNewer(p.version || "0.0.0", remoteVer);
-                        const btnClass = isUpdate ? 'updater-update-btn' : 'updater-reinstall-btn';
+                        const configuredBranch = p.branch || 'main';
 
-                        // Rimuovi eventuali pulsanti esistenti per gestire correttamente il cambio di stato (es. da Update a Reinstall)
-                        const existingBtn = actionsContainer.querySelector('.updater-update-btn, .updater-reinstall-btn');
-                        if (existingBtn) existingBtn.remove();
+                        // Rimuovi pulsanti esistenti per rigenerarli correttamente
+                        actionsContainer.querySelectorAll('.updater-update-btn, .updater-reinstall-btn, .updater-branch-btn').forEach(b => b.remove());
 
-                        const btn = document.createElement('button');
-                        btn.className = `updater-btn updater-btn-small ${btnClass}`;
-                        btn.textContent = isUpdate ? 'Update' : 'Reinstall';
-                        btn.style.background = isUpdate ? '#fe0830' : '#444';
-                        btn.title = isUpdate ? `Download and install the new version (${remoteVer})` : `Force download and overwrite files for the current version (${p.version})`;
-                        btn.style.color = '#fff';
-                        btn.style.marginRight = '4px';
-                        btn.onclick = () => performUpdate(p);
-                        actionsContainer.prepend(btn);
+                        const createBtn = (branch, label, isPrimary) => {
+                            const btn = document.createElement('button');
+                            const btnClass = isUpdate ? 'updater-update-btn' : 'updater-reinstall-btn';
+                            btn.className = `updater-btn updater-btn-small ${btnClass} ${!isPrimary ? 'updater-branch-btn' : ''}`;
+                            btn.textContent = label;
+                            btn.style.background = isPrimary ? (isUpdate ? '#fe0830' : '#444') : '#333';
+                            btn.style.color = '#fff';
+                            btn.style.marginRight = '4px';
+                            btn.title = isPrimary 
+                                ? (isUpdate ? `Update ${branch} to ${remoteVer}` : `Reinstall current version from ${branch}`)
+                                : `Switch to ${branch} branch and download`;
+                            btn.onclick = () => performUpdate(p, branch);
+                            return btn;
+                        };
+
+                        // Se siamo su un branch diverso da main, offriamo entrambi
+                        if (configuredBranch !== 'main') {
+                            actionsContainer.prepend(createBtn('main', 'Main', false));
+                            actionsContainer.prepend(createBtn(configuredBranch, isUpdate ? `Update (${configuredBranch})` : 'Reinstall', true));
+                        } else {
+                            actionsContainer.prepend(createBtn('main', isUpdate ? 'Update' : 'Reinstall', true));
+                        }
                     }
                 }
             }
@@ -475,11 +487,28 @@
                 }
             }
 
-            async function performUpdate(p) {
+            async function performUpdate(p, branchOverride = null) {
                 // Determine if this is a standard version upgrade or a forced reinstallation
+                const targetBranch = branchOverride || p.branch || 'main';
                 const isUpdate = isNewer(p.version || "0.0.0", p.cachedRemoteVer);
-                const msg = isUpdate ? `Update ${p.name} to version ${p.cachedRemoteVer}?` : `Reinstall ${p.name} version ${p.version}?`;
+                
+                let msg = isUpdate ? `Update ${p.name} to version ${p.cachedRemoteVer}?` : `Reinstall ${p.name} version ${p.version}?`;
+                if (branchOverride && branchOverride !== p.branch) {
+                    msg = `Switch ${p.name} to branch "${branchOverride}" and download files?`;
+                }
                 if (!confirm(msg)) return;
+
+                // Se cambiamo branch, salviamo la preferenza sul server prima di procedere
+                if (branchOverride && branchOverride !== p.branch) {
+                    try {
+                        await fetch('/plugins/Updater/save-override', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ pluginName: p.name, branch: branchOverride })
+                        });
+                        p.branch = branchOverride;
+                    } catch (e) { console.error("Failed to save branch override"); }
+                }
 
                 // Resolve the repository owner and name from the plugin's metadata or URL
                 const owner = resolveOwner(p, currentPlugins);
@@ -494,7 +523,7 @@
                 let skipRecursive = false;
 
                 // Build the GitHub "raw" base URL
-                const rawBaseUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${p.branch || 'main'}`;
+                const rawBaseUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${targetBranch}`;
 
                 // Provide immediate visual feedback in the status cell
                 const statusId = `status-${p.name.replace(/\s+/g, '_')}`;

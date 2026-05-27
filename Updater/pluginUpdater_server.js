@@ -1,10 +1,10 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.2.1)
+ * Updater Plugin for FM-DX Webserver (v. 0.2.2)
  * ************************************************
  */
 
-// branch develop 0.2.0
+// branch develop
 
 "use strict";
 
