@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.2.2)
+ * Updater Plugin for FM-DX Webserver (v. 0.2.3)
  * ************************************************
  */
 
@@ -283,7 +283,7 @@ endpointsRouter.post('/plugins/Updater/settings', express.json(), (req, res) => 
  */
 endpointsRouter.post('/plugins/Updater/save-override', express.json(), (req, res) => {
     try {
-        const { pluginName: name, repoUrl, fileUrl, localDir, branch, downloadedFiles, notDownloadedFiles } = req.body; // Merge new data with existing ones to avoid losing information
+        const { pluginName: name, repoUrl, fileUrl, localDir, branch, downloadedFiles, notDownloadedFiles, localDescriptorName } = req.body; // Merge new data with existing ones to avoid losing information
 
         // Se il plugin ha un URL repository e non è ancora presente in repo_data.json, lo aggiungiamo
         const rawStatic = readJsonFile(repoDataPath);
@@ -311,7 +311,8 @@ endpointsRouter.post('/plugins/Updater/save-override', express.json(), (req, res
             ...(localDir !== undefined && { localDir }),
             ...(branch !== undefined && { branch }),
             ...(downloadedFiles !== undefined && { downloadedFiles }),
-            ...(notDownloadedFiles !== undefined && { notDownloadedFiles })
+            ...(notDownloadedFiles !== undefined && { notDownloadedFiles }),
+            ...(localDescriptorName !== undefined && { localDescriptorName })
         };
 
         if (saveOverrides(overrides)) res.json({ ok: true, rateLimit: lastRateLimit });
@@ -391,7 +392,8 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json(), async (re
         overrides[pluginName] = { 
             ...(overrides[pluginName] || {}),
             downloadedFiles: downloadedList,
-            notDownloadedFiles: notDownloadedList
+            notDownloadedFiles: notDownloadedList,
+            localDescriptorName: localDescriptorName
         };
         saveOverrides(overrides);
 
@@ -624,8 +626,20 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                         const pluginModule = require(filePath);
                         if (pluginModule && pluginModule.pluginConfig) {
                             const config = pluginModule.pluginConfig;
-                            const name = config.name;
-                            const dyn = dynamicData[name] || {};
+                        
+                        // Ricerca l'override tramite il nome del file descrittore locale
+                        // per gestire correttamente versioni di branch diversi dello stesso plugin
+                        let name = config.name;
+                        let dyn = {};
+                        
+                        const ovEntry = Object.entries(dynamicData).find(([n, d]) => d && d.localDescriptorName === file);
+                        if (ovEntry) {
+                            name = ovEntry[0];
+                            dyn = ovEntry[1];
+                        } else {
+                            dyn = dynamicData[name] || {};
+                        }
+
                             const stat = staticData[name] || {};
 
                             // Logica richiesta: se non c'è nel config, guarda in repo_data. dyn ha sempre priorità (manuale).
@@ -654,6 +668,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
 
                             pluginList.push({
                                 ...config,
+                                name: name,
                                 fileName: file,
                                 fullPath: filePath,
                                 ...dyn,

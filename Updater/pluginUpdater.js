@@ -9,7 +9,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.2.2';
+    const pluginVersion = '0.2.3';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -396,28 +396,20 @@
                         // Rimuovi pulsanti esistenti per rigenerarli correttamente
                         actionsContainer.querySelectorAll('.updater-update-btn, .updater-reinstall-btn, .updater-branch-btn').forEach(b => b.remove());
 
-                        const createBtn = (branch, label, isPrimary) => {
+                        const createBtn = (branch, label) => {
                             const btn = document.createElement('button');
                             const btnClass = isUpdate ? 'updater-update-btn' : 'updater-reinstall-btn';
-                            btn.className = `updater-btn updater-btn-small ${btnClass} ${!isPrimary ? 'updater-branch-btn' : ''}`;
+                            btn.className = `updater-btn updater-btn-small ${btnClass}`;
                             btn.textContent = label;
-                            btn.style.background = isPrimary ? (isUpdate ? '#fe0830' : '#444') : '#333';
+                            btn.style.background = isUpdate ? '#fe0830' : '#444';
                             btn.style.color = '#fff';
                             btn.style.marginRight = '4px';
-                            btn.title = isPrimary 
-                                ? (isUpdate ? `Update ${branch} to ${remoteVer}` : `Reinstall current version from ${branch}`)
-                                : `Switch to ${branch} branch and download`;
+                            btn.title = isUpdate ? `Update ${branch} to ${remoteVer}` : `Reinstall current version from ${branch}`;
                             btn.onclick = () => performUpdate(p, branch);
                             return btn;
                         };
 
-                        // Se siamo su un branch diverso da main, offriamo entrambi
-                        if (configuredBranch !== 'main') {
-                            actionsContainer.prepend(createBtn('main', 'Main', false));
-                            actionsContainer.prepend(createBtn(configuredBranch, isUpdate ? `Update (${configuredBranch})` : 'Reinstall', true));
-                        } else {
-                            actionsContainer.prepend(createBtn('main', isUpdate ? 'Update' : 'Reinstall', true));
-                        }
+                        actionsContainer.prepend(createBtn(configuredBranch, isUpdate ? 'Update' : 'Reinstall'));
                     }
                 }
             }
@@ -752,8 +744,21 @@
                     const localDir = modal.querySelector('#edit-local-dir').value.trim();
                     const branch = modal.querySelector('#edit-branch').value.trim();
                     
-                    if (!repoUrl || !fileUrl || !localDir) {
-                        return alert("All three fields (Repository URL, File Path, and Local Directory) are required.");
+                    if (!repoUrl || !fileUrl || !localDir) return alert("All three fields are required.");
+
+                    let targetPluginName = p.name;
+                    let targetLocalDir = localDir;
+                    let targetDescriptorName = p.fileName || (fileUrl.split('/').pop());
+
+                    // Se viene inserito un branch non-main, creiamo una nuova entry (linea) se non esiste già con quel suffisso
+                    if (branch && branch !== 'main' && branch !== 'master') {
+                        // Evitiamo di aggiungere il suffisso se è già presente nel nome del plugin (es. Updater-develop)
+                        if (!p.name.endsWith('-' + branch)) {
+                            targetPluginName = `${p.name}-${branch}`;
+                            targetLocalDir = `${localDir}-${branch}`;
+                            const baseName = targetDescriptorName.endsWith('.js') ? targetDescriptorName.slice(0, -3) : targetDescriptorName;
+                            targetDescriptorName = `${baseName}-${branch}.js`;
+                        }
                     }
 
                     try {
@@ -761,11 +766,12 @@
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                pluginName: p.name,
-                                repoUrl: repoUrl || null,
-                                fileUrl: fileUrl || null,
-                                localDir: localDir || null,
-                                branch: branch || null
+                                pluginName: targetPluginName,
+                                repoUrl: repoUrl,
+                                fileUrl: fileUrl,
+                                localDir: targetLocalDir,
+                                branch: branch,
+                                localDescriptorName: targetDescriptorName
                             })
                         });
 
@@ -774,15 +780,7 @@
                             if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
                             if (data.ok) {
                                 overlay.remove();
-                                // Update local object and re-run check
-                                p.repoUrl = repoUrl || null;
-                                p.fileUrl = fileUrl || null;
-                                p.localDir = localDir || null;
-                                p.branch = branch || null;
-                                // Clean old fields if present // Force re-check
-                                delete p.githubOwner; delete p.githubRepo; delete p.githubPath;
-                                delete p.cachedRemoteVer;
-                                renderPluginRows();
+                                await refreshList();
 
                                 // Update all plugins from the same author as they might have inherited the new owner
                                 allPlugins.forEach(pl => {
@@ -1021,8 +1019,20 @@
                     const nameMatch = descriptorText.match(/name\s*:\s*['"]([^'"]+)['"]/);
                     const fePathMatch = descriptorText.match(/frontEndPath\s*:\s*['"]([^'"]+)['"]/);
 
-                    const pluginName = nameMatch ? nameMatch[1] : repo;
+                    const originalPluginName = nameMatch ? nameMatch[1] : repo;
                     const fePath = fePathMatch ? fePathMatch[1] : "";
+                    const descriptorFileName = foundFileUrl.split('/').pop();
+
+                    let targetPluginName = originalPluginName;
+                    let targetLocalDir = localDir;
+                    let targetDescriptorName = descriptorFileName;
+
+                    if (branch && branch !== 'main' && branch !== 'master') {
+                        targetPluginName = `${originalPluginName}-${branch}`;
+                        targetLocalDir = `${localDir}-${branch}`;
+                        const baseName = descriptorFileName.endsWith('.js') ? descriptorFileName.slice(0, -3) : descriptorFileName;
+                        targetDescriptorName = `${baseName}-${branch}.js`;
+                    }
 
                     try {
                         // Step 1: Save the plugin configuration/overrides to the server
@@ -1030,11 +1040,12 @@
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                pluginName: pluginName,
+                                pluginName: targetPluginName,
                                 repoUrl: repoUrl,
                                 fileUrl: foundFileUrl,
-                                localDir: localDir,
-                                branch: branch
+                                localDir: targetLocalDir,
+                                branch: branch,
+                                localDescriptorName: targetDescriptorName
                             })
                         });
 
@@ -1047,12 +1058,12 @@
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
-                                    pluginName: pluginName,
+                                    pluginName: targetPluginName,
                                     rawBaseUrl: `https://raw.githubusercontent.com/${owner}/${repo}/${branch}`,
                                     remoteDescriptorPath: foundFileUrl,
-                                    localDescriptorName: foundFileUrl.split('/').pop(),
+                                    localDescriptorName: targetDescriptorName,
                                     frontEndPath: fePath,
-                                    localDir: localDir,
+                                    localDir: targetLocalDir,
                                     skipRecursive: skipRecursive
                                 })
                             });
