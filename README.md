@@ -4,6 +4,7 @@ The **Updater** plugin is a management tool designed for the [FM-DX Webserver](h
 It provides a web interface to easily track new versions of the installed plugins and update them, automatically downloading files from the GitHub repository and saving them in the web server. 
 It can automatically install a new plugin, just providing the URL of its GitHub repository. 
 You may also explore the plugin files stored on the server and check and modify them (e.g. config files, etc). 
+- The Discord plugin page is: https://discord.com/channels/1053804249651359765/1233159920711368765/threads/1506667363859173468
 
 <img width="826" height="378" alt="plugins list" src="https://github.com/user-attachments/assets/88d6ba0e-50e1-4ecf-aa46-64750b0aa457" />
 
@@ -89,7 +90,8 @@ Click the **Gear Icon** next to the version number to access advanced settings:
 - **Configuration Files**: Quick access to raw configuration files `plugins_data.json` (stores the data of each installed plugin) and `pl_data.json` (stores the url of some repository).
 
 ## Notes
-- Comments and suggestions are welcome! Thanks to anyone who tries the plugin and reports any bugs. 
+- Comments and suggestions are welcome! Thanks to anyone who tries the plugin and reports any bugs.
+- If you like the plugin, please tell me on Discord: https://discord.com/channels/1053804249651359765/1233159920711368765/threads/1506667363859173468
 - If the new version of a plugin has changed the names of the files or directories used or their position, it is recommended to delete it and then reload it as a new plugin. 
 - The program uses the Github API (https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2026-03-10), which has a limit of 60 requests per hour. 
 The limit should be sufficient for all normal uses. If it is exceeded (error 403), you simply have to wait the necessary time. The number of available calls is indicated on the main page, at the top right. 
