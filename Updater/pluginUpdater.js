@@ -631,6 +631,8 @@
                 
                 const modal = document.createElement('div');
                 modal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:450px; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
+                let calculatedBranch = p.branch || 'main';
+
                 modal.innerHTML = `
                     <h3 style="margin-top:0;">Edit GitHub Data for <b>${p.name}</b></h3>
                     <p style="font-size:12px; color:#666; margin-bottom:15px;">Enter the GitHub URL and click Verify to auto-fill details.</p>
@@ -641,12 +643,6 @@
                     <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:12px; font-weight:bold;">Descriptive File Path / URL (.js)</label>
                         <input type="text" id="edit-file-path" value="${p.fileUrl || p.githubPath || ''}" placeholder="${p.fileName || p.frontEndPath || 'plugin.js'}" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
-                    </div>
-                    <div style="margin-bottom:15px;">
-                        <label style="display:block; font-size:12px; font-weight:bold;">Branch</label>
-                        <input type="text" id="edit-branch" list="edit-branch-datalist" value="${p.branch || 'main'}" placeholder="main" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;" ${!settings.advancedMode ? 'readonly' : ''}>
-                        <datalist id="edit-branch-datalist"></datalist>
-                        ${!settings.advancedMode ? '<div style="font-size:10px; color:#999; margin-top:2px;">Enable Advanced Mode to change branch.</div>' : ''}
                     </div>
                     <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:12px; font-weight:bold;">Local Directory (relative to plugins/)</label>
@@ -670,32 +666,30 @@
                     const owner = match[1];
                     const repo = match[2];
                     const urlBranch = match[3];
-                    const manualBranch = modal.querySelector('#edit-branch').value.trim();
                     const verifyBtn = modal.querySelector('#verify-repo-btn');
                     const originalHtml = verifyBtn.innerHTML;
                     
                     verifyBtn.disabled = true;
                     verifyBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
 
+                    let branchList = [];
                     try {
                         // Fetch available branches
                         const branchesRes = await fetch(`/plugins/Updater/branches?repoUrl=${encodeURIComponent(repoUrl)}`);
                         if (branchesRes.ok) {
-                            const branchList = await branchesRes.json();
-                            const dl = modal.querySelector('#edit-branch-datalist');
-                            dl.innerHTML = branchList.map(b => `<option value="${b}">`).join('');
-                            // Se il branch attuale non è nella lista o è main e esiste develop, suggerisci develop
-                            if (branchList.includes('develop') && modal.querySelector('#edit-branch').value === 'main') {
-                                modal.querySelector('#edit-branch').value = 'develop';
-                            }
+                            branchList = await branchesRes.json();
                         }
 
                         // Step 1: Check root contents to see if a 'plugins' folder exists
                         const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`);
                         const repoInfo = await repoRes.json();
-                        const branch = urlBranch || (settings.advancedMode ? manualBranch : null) || repoInfo.default_branch || 'main';
                         
-                        modal.querySelector('#edit-branch').value = branch;
+                        let branch = urlBranch || repoInfo.default_branch || 'main';
+                        if ((!urlBranch || urlBranch === repoInfo.default_branch) && branchList.includes('develop')) {
+                            branch = 'develop';
+                        }
+                        
+                        calculatedBranch = branch;
 
                         let contentsUrl = `https://api.github.com/repos/${owner}/${repo}/contents/?ref=${branch}`;
                         let res = await fetch(contentsUrl);
@@ -748,7 +742,7 @@
                     const repoUrl = modal.querySelector('#edit-repo-url').value.trim();
                     const fileUrl = modal.querySelector('#edit-file-path').value.trim();
                     const localDir = modal.querySelector('#edit-local-dir').value.trim();
-                    const branch = modal.querySelector('#edit-branch').value.trim();
+                    const branch = calculatedBranch;
                     
                     if (!repoUrl || !fileUrl || !localDir) return alert("All three fields are required.");
 
@@ -804,6 +798,8 @@
                 // Build the modal container with input fields for GitHub and local info
                 const modal = document.createElement('div');
                 modal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:450px; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
+                let calculatedBranch = 'main';
+
                 modal.innerHTML = `
                     <h3 style="margin-top:0;">Add New Plugin</h3>
                     <p style="font-size:12px; color:#666; margin-bottom:15px;">Enter the GitHub URL and click Verify to auto-fill details.<br>
@@ -819,12 +815,6 @@
                     <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">Descriptor File Path (.js) in Repo</label>
                         <input type="text" id="add-file-path" placeholder="e.g. FavStations.js or Folder/Plugin.js" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
-                    </div>
-                    <div style="margin-bottom:15px;">
-                        <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">Branch</label>
-                        <input type="text" id="add-branch" list="add-branch-datalist" value="main" placeholder="main" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;" ${!settings.advancedMode ? 'readonly' : ''}>
-                        <datalist id="add-branch-datalist"></datalist>
-                        ${!settings.advancedMode ? '<div style="font-size:10px; color:#999; margin-top:2px;">Enable Advanced Mode to change branch.</div>' : ''}
                     </div>
                     <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">Local Directory (relative to plugins/)</label>
@@ -867,31 +857,30 @@
                     const owner = match[1];
                     const repo = match[2];
                     const urlBranch = match[3];
-                    const manualBranch = modal.querySelector('#add-branch').value.trim();
                     const verifyBtn = modal.querySelector('#verify-repo-btn');
                     const originalHtml = verifyBtn.innerHTML;
                     
                     verifyBtn.disabled = true;
                     verifyBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
 
+                    let branchList = [];
                     try {
                         // Fetch available branches
                         const branchesRes = await fetch(`/plugins/Updater/branches?repoUrl=${encodeURIComponent(repoUrl)}`);
                         if (branchesRes.ok) {
-                            const branchList = await branchesRes.json();
-                            const dl = modal.querySelector('#add-branch-datalist');
-                            dl.innerHTML = branchList.map(b => `<option value="${b}">`).join('');
-                            if (branchList.includes('develop')) {
-                                modal.querySelector('#add-branch').value = 'develop';
-                            }
+                            branchList = await branchesRes.json();
                         }
 
                         // Step 1: Check root contents to see if a 'plugins' folder exists
                         const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`);
                         const repoInfo = await repoRes.json();
-                        const branch = urlBranch || (settings.advancedMode ? manualBranch : null) || repoInfo.default_branch || 'main';
                         
-                        modal.querySelector('#add-branch').value = branch;
+                        let branch = urlBranch || repoInfo.default_branch || 'main';
+                        if ((!urlBranch || urlBranch === repoInfo.default_branch) && branchList.includes('develop')) {
+                            branch = 'develop';
+                        }
+                        
+                        calculatedBranch = branch;
 
                         let contentsUrl = `https://api.github.com/repos/${owner}/${repo}/contents/?ref=${branch}`;
                         let res = await fetch(contentsUrl);
@@ -963,7 +952,7 @@
                     const repoUrl = modal.querySelector('#add-repo-url').value.trim();
                     const manualFilePath = modal.querySelector('#add-file-path').value.trim();
                     const localDir = modal.querySelector('#add-local-dir').value.trim();
-                    const branch = modal.querySelector('#add-branch').value.trim();
+                    const branch = calculatedBranch;
 
                     // Basic validation to ensure all required fields are populated
                     if (!repoUrl || !manualFilePath || !localDir) {
@@ -1180,10 +1169,10 @@
                     <div style="margin-bottom:8px; font-weight:bold; color:#00ccff; font-size:11px; text-transform:uppercase;">Configuration Files</div>
                     <button id="view-new-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-file-code"></i> plugins_data.json</button>
                     <button id="view-repo-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-database"></i> repo_data.json</button>
-                    
-                    <div style="margin:12px 0 8px 0; border-top:1px solid #333; padding-top:12px; font-weight:bold; color:#ffaa00; font-size:11px; text-transform:uppercase;">Advanced Tools</div>
-                    <button id="menu-terminal-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-terminal"></i> Terminal</button>
-                    <button id="menu-cache-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-memory"></i> Node.js Cache</button>
+                    <!-- Temporarily removed advanced tools -->
+                    <!-- <div style="margin:12px 0 8px 0; border-top:1px solid #333; padding-top:12px; font-weight:bold; color:#ffaa00; font-size:11px; text-transform:uppercase;">Advanced Tools</div> -->
+                    <!-- <button id="menu-terminal-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-terminal"></i> Terminal</button> -->
+                    <!-- <button id="menu-cache-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-memory"></i> Node.js Cache</button> -->
                 `;
                 document.body.appendChild(dropdown);
                 const dRect = dropdown.getBoundingClientRect();
