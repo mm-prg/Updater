@@ -699,42 +699,6 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
 
         if (needsSave) saveOverrides(dynamicData);
 
-        // Add plugins defined in plugins_data.json that were not found physically
-        Object.keys(overrides).forEach(name => {
-            const alreadyInList = pluginList.find(p => p.name === name);
-            if (!alreadyInList) {
-                const ov = overrides[name];
-                const fileName = (ov.localDescriptorName || (ov.fileUrl ? ov.fileUrl.split('/').pop() : name.replace(/\s+/g, '') + '.js')).split(/[\\/]/).pop();
-                const filePath = path.join(pluginsDir, fileName);
-                
-                let version = '0.0.0';
-                let author = 'Unknown';
-
-                // Se il file esiste fisicamente (anche se è di un branch), leggiamo la versione reale
-                if (fs.existsSync(filePath)) {
-                    try {
-                        const resolvedPath = require.resolve(filePath);
-                        delete require.cache[resolvedPath];
-                        const pluginModule = require(filePath);
-                        if (pluginModule && pluginModule.pluginConfig) {
-                            version = pluginModule.pluginConfig.version || '0.0.0';
-                            author = pluginModule.pluginConfig.author || 'Unknown';
-                        }
-                    } catch (e) {}
-                }
-
-                pluginList.push({
-                    name: name,
-                    version: version,
-                    author: author,
-                    fileName: fileName,
-                    fullPath: filePath,
-                    ...ov,
-                    isNew: true
-                });
-            }
-        });
-
         logInfo(`[${pluginName}] Total plugins found: ${pluginList.length}`);
         res.json({ plugins: pluginList, rateLimit: lastRateLimit });
     } catch (e) {
