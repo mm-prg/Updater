@@ -9,7 +9,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.1.3';
+    const pluginVersion = '0.1.3b';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -439,7 +439,7 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            pluginName: p.name,
+                            pluginName: (p.branch && p.branch !== 'main' && p.name.includes('(')) ? p.name : (p.logicalName || p.name),
                             repoUrl: repoUrl,
                             fileUrl: fileUrl,
                             localDir: localDir
@@ -502,7 +502,7 @@
                         await fetch('/plugins/Updater/save-override', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ pluginName: p.name, branch: branchOverride })
+                            body: JSON.stringify({ pluginName: (p.branch && p.branch !== 'main' && p.name.includes('(')) ? p.name : (p.logicalName || p.name), branch: branchOverride })
                         });
                         p.branch = branchOverride;
                     } catch (e) { console.error("Failed to save branch override"); }
@@ -536,7 +536,7 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            pluginName: p.name,
+                            pluginName: (p.branch && p.branch !== 'main') ? p.name : (p.logicalName || p.name),
                             rawBaseUrl: rawBaseUrl,
                             remoteDescriptorPath: remoteDescriptorPath,
                                 localDescriptorName: (p.localDescriptorName || p.fileName || remoteDescriptorPath).split(/[\\/]/).pop(),
@@ -555,7 +555,7 @@
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({
-                                        pluginName: p.name,
+                                        pluginName: (p.branch && p.branch !== 'main') ? p.name : (p.logicalName || p.name),
                                         downloadedFiles: data.files,
                                         notDownloadedFiles: data.notDownloadedFiles
                                     })
@@ -603,7 +603,7 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            pluginName: p.name,
+                            pluginName: (p.branch && p.branch !== 'main') ? p.name : (p.logicalName || p.name),
                             fileName: p.fileName,
                             localDir: p.localDir
                         })
@@ -746,7 +746,7 @@
                     
                     if (!repoUrl || !fileUrl || !localDir) return alert("All three fields are required.");
 
-                    let targetPluginName = p.name;
+                    let targetPluginName = (p.branch && p.branch !== 'main') ? p.name : (p.logicalName || p.name);
                     let targetLocalDir = localDir;
                     let targetDescriptorName = (p.fileName || fileUrl).split(/[\\/]/).pop();
 
