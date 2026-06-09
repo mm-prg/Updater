@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.1.3b)
+ * Updater Plugin for FM-DX Webserver (v. 0.1.3d)
  * ************************************************
  */
 
@@ -615,23 +615,11 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
         let needsSave = false;
 
         const processedLogicalNames = new Set();
+        const localPluginsInfo = {}; // Memorizza i dati dei plugin locali per associarli ai branch
 
         for (const entry of entries) {
-            let filesToProcess = [];
             if (entry.isFile() && entry.name.endsWith('.js')) {
-                filesToProcess.push(entry.name);
-            } else if (entry.isDirectory()) {
-                try {
-                    const subFiles = fs.readdirSync(path.join(pluginsDir, entry.name));
-                    for (const subFile of subFiles) {
-                        if (subFile.endsWith('.js')) {
-                            filesToProcess.push(path.join(entry.name, subFile).replace(/\\/g, '/'));
-                        }
-                    }
-                } catch (e) {}
-            }
-
-            for (const file of filesToProcess) {
+                const file = entry.name;
                 const filePath = path.join(pluginsDir, file);
                 const fileNameOnly = file.split(/[\\/]/).pop();
 
@@ -650,6 +638,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                             if (!nameMatch) continue;
 
                             const pluginNameFromConfig = nameMatch[1].trim();
+//                            logInfo(`[Updater] Rilevato plugin locale: "${pluginNameFromConfig}" nel file ${file}`);
                             
                             // Avoid re-processing the same logical plugin if it has multiple files
                             if (processedLogicalNames.has(pluginNameFromConfig)) continue;
@@ -683,6 +672,8 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                                 localDir: (dynOverride.branch && dynOverride.branch !== 'main') ? (path.dirname(config.frontEndPath).replace(/\\/g, '/') || '') : (dynOverride.localDir || path.dirname(config.frontEndPath).replace(/\\/g, '/') || '')
                             };
 
+                            // Memorizziamo i dati locali per la successiva scansione dei branch
+                            localPluginsInfo[pluginNameFromConfig] = { config, localDescriptorName, filePath };
                             processedLogicalNames.add(pluginNameFromConfig);
 
                             // Applica altri override solo se sono specifici per il main o generici
@@ -709,51 +700,69 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                                     Object.assign(mainEntry, discovered);
                                 }
                             }
+//                            logInfo(`[Updater] Aggiunta riga Main per "${pluginNameFromConfig}" (branch: main)`);
                             pluginList.push(mainEntry); // Add main entry
-
-                            // --- Prepare the "branch" entries if any specific branches are defined in overrides ---
-                            for (const [ovrKey, ovrData] of Object.entries(dynamicData)) {
-                                // Match any entry that belongs to this logical plugin and has a branch defined (not main)
-                                const isBranchEntry = ovrData && typeof ovrData === 'object' && ovrData.branch && ovrData.branch !== 'main';
-                                const belongsToThisPlugin = (ovrKey === pluginNameFromConfig) || 
-                                                            (ovrKey.startsWith(`${pluginNameFromConfig} (`)) ||
-                                                            (ovrData.logicalName === pluginNameFromConfig);
-
-                                if (isBranchEntry && belongsToThisPlugin) {
-                                    
-                                    let branchEntry = {
-                                        ...config, // Base info from local file
-                                        name: (ovrKey === pluginNameFromConfig) ? `${pluginNameFromConfig} (${ovrData.branch})` : ovrKey,
-                                        logicalName: pluginNameFromConfig,
-                                        fileName: localDescriptorName, // Just the file name
-                                        fullPath: filePath,
-                                        localDescriptorName: localDescriptorName, // Store for matching
-                                        ...ovrData, // All overrides apply to this branch entry
-                                        branch: ovrData.branch, // Explicitly set branch
-                                    };
-
-                                    // Auto-discovery for missing repo details for the branch entry
-                                    if (branchEntry.repoUrl && (!branchEntry.fileUrl || branchEntry.localDir === undefined)) {
-                                        logInfo(`[${pluginName}] Attempting auto-discovery for ${branchEntry.name} at ${branchEntry.repoUrl}`);
-                                        const discovered = await discoverMetadataFromRepo(branchEntry.repoUrl, branchEntry.branch);
-                                        if (discovered) {
-                                            logInfo(`[${pluginName}] Discovered metadata for ${branchEntry.name}:`, discovered);
-                                            // Update dynamicData for this specific override key
-                                            dynamicData[ovrKey] = { ...dynamicData[ovrKey], ...discovered, repoUrl: branchEntry.repoUrl };
-                                            needsSave = true;
-                                            // Apply discovered to branchEntry
-                                            Object.assign(branchEntry, discovered);
-                                        }
-                                    }
-                                    pluginList.push(branchEntry); // Add branch entry
-                                }
-                            }
                         } // Skip files that are not valid modules or don't contain pluginConfig
                     } catch (err) {
                         // Skip files that are not valid modules or don't contain pluginConfig
                         // logError(`[${pluginName}] Skipping ${file}: ${err.message}`);
                     }
                 }
+            }
+        }
+
+        // --- Fase 2: Scansione di plugins_data.json per aggiungere tutti i branch secondari (branch != main) ---
+        logInfo(`[Updater] Plugin locali rilevati sul disco: [${Object.keys(localPluginsInfo).join(', ')}]`);
+        logInfo(`[Updater] Scansione plugins_data.json per aggiungere i branch secondari rilevati...`);
+        
+        const jsonEntries = Object.entries(dynamicData);
+        logInfo(`[Updater] Numero entry trovate nel file JSON: ${jsonEntries.length}`);
+
+        for (const [ovrKey, ovrData] of jsonEntries) {
+//            logInfo(`[Updater] Analizzando entry JSON: "${ovrKey}"`);
+            
+            if (!ovrData || typeof ovrData !== 'object') {
+              logInfo(`[Updater] -> Saltata entry "${ovrKey}": dati non validi (null o non oggetto)`);
+                continue;
+            }
+
+            if (!ovrData.branch || ovrData.branch === 'main') {
+//                logInfo(`[Updater] -> Saltata entry "${ovrKey}": branch mancante o impostato a "main"`);
+                continue;
+            }
+
+            // Identifichiamo il plugin locale associato (es. da "FavStations (develop)" a "FavStations")
+            let logicalName = ovrData.logicalName || ovrKey.split(' (')[0];
+            let localInfo = localPluginsInfo[logicalName];
+
+            // Se non troviamo corrispondenza per nome (es. "FavStations-dev0.2"), 
+            // cerchiamo se esiste un plugin locale che usa lo stesso file descrittore salvato nel JSON
+            if (!localInfo && ovrData.localDescriptorName) {
+                const entryByFile = Object.entries(localPluginsInfo).find(([_, info]) => info.localDescriptorName === ovrData.localDescriptorName);
+                if (entryByFile) {
+                    logicalName = entryByFile[0];
+                    localInfo = entryByFile[1];
+//                    logInfo(`[Updater] -> Corrispondenza trovata tramite file: "${ovrData.localDescriptorName}" associato a "${logicalName}"`);
+                }
+            }
+
+//            logInfo(`[Updater] -> Branch "${ovrData.branch}" rilevato per "${ovrKey}". Cerco corrispondenza locale per: "${logicalName}"`);
+
+            // Aggiungiamo il branch solo se il plugin principale è installato localmente
+            if (localInfo) {
+                logInfo(`[Updater] Plugin "${logicalName}" trovato localmente. Aggiunta riga branch: "${ovrKey}"`);
+                pluginList.push({
+                    ...localInfo.config,
+                    name: ovrKey,
+                    logicalName: logicalName,
+                    fileName: localInfo.localDescriptorName,
+                    fullPath: localInfo.filePath,
+                    localDescriptorName: localInfo.localDescriptorName,
+                    ...ovrData, // I dati GitHub vengono presi direttamente dal JSON
+                    branch: ovrData.branch
+                });
+            } else {
+                logInfo(`[Updater] -> KO: Il plugin principale "${logicalName}" non è stato rilevato localmente. Verificare che il "name" in pluginConfig del file .js corrisponda esattamente a questa stringa.`);
             }
         }
 
