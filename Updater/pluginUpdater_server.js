@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.2.3)
+ * Updater Plugin for FM-DX Webserver (v. 0.1.3)
  * ************************************************
  */
 
@@ -356,7 +356,10 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json(), async (re
 
         // Step 2: Download the descriptor file and save it in the local "plugins" directory
         const descriptorUrl = `${rawBaseUrl}/${remoteDescriptorPath}`;
-        const descriptorDest = path.join(pluginsDir, localDescriptorName);
+        const descriptorFileName = path.basename(localDescriptorName || remoteDescriptorPath);
+        const descriptorDest = path.join(pluginsDir, descriptorFileName);
+        const savedDescriptorName = descriptorFileName;
+
         await download(descriptorUrl, descriptorDest);
         downloadedList.push(remoteDescriptorPath);
 
@@ -373,13 +376,6 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json(), async (re
             }
 
             const localTargetDir = path.join(pluginsDir, localDir);
-            
-            // Create the local directory inside "plugins" if it doesn't exist
-            if (!fs.existsSync(localTargetDir)) {
-                fs.mkdirSync(localTargetDir, { recursive: true });
-                logInfo(`[Updater] Created local directory: ${localTargetDir}`);
-            }
-            
             logInfo(`[Updater] Downloading files from tree for ${remoteDirPath}...`);
             const files = await downloadFromTree(owner, repo, branch, remoteDirPath, localTargetDir, treeItems);
             downloadedList = downloadedList.concat(files);
@@ -393,7 +389,7 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json(), async (re
             ...(overrides[pluginName] || {}),
             downloadedFiles: downloadedList,
             notDownloadedFiles: notDownloadedList,
-            localDescriptorName: localDescriptorName
+            localDescriptorName: savedDescriptorName
         };
         saveOverrides(overrides);
 
@@ -601,7 +597,7 @@ endpointsRouter.post('/plugins/Updater/terminal-command', express.json(), (req, 
 endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
     try {
         logInfo(`[${pluginName}] Scanning directory: ${pluginsDir}`);
-        const files = fs.readdirSync(pluginsDir);
+        const entries = fs.readdirSync(pluginsDir, { withFileTypes: true });
         const pluginList = [];
         
         // Carichiamo i dati per gestire la priorità: Override > Code > repo_data
@@ -614,25 +610,40 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
         const overrides = loadOverrides(); 
         let needsSave = false;
 
-        for (const file of files) {
-            // Search for .js files acting as descriptors (e.g., FavStations.js, Updater.js)
-            if (file.endsWith('.js')) {
+        for (const entry of entries) {
+            let filesToProcess = [];
+            if (entry.isFile() && entry.name.endsWith('.js')) {
+                filesToProcess.push(entry.name);
+            } else if (entry.isDirectory()) {
+                try {
+                    const subFiles = fs.readdirSync(path.join(pluginsDir, entry.name));
+                    for (const subFile of subFiles) {
+                        if (subFile.endsWith('.js')) {
+                            filesToProcess.push(path.join(entry.name, subFile).replace(/\\/g, '/'));
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            for (const file of filesToProcess) {
                 const filePath = path.join(pluginsDir, file);
-                // Exclude system files or scripts that are clearly frontend only
-                if (fs.statSync(filePath).isFile() && file !== 'index.js' && !file.includes('.frontend.')) {
+                const fileNameOnly = file.split(/[\\/]/).pop();
+
+                // Skip internal server scripts, frontend files, and entry points to avoid circular requires or crashes
+                if (fileNameOnly !== 'index.js' && !fileNameOnly.includes('.frontend.') && !fileNameOnly.endsWith('_server.js') && fileNameOnly !== 'server.js' && fileNameOnly !== 'pluginUpdater.js') {
                     try { // Clear require cache to read any live changes
                         const resolvedPath = require.resolve(filePath);
                         delete require.cache[resolvedPath]; // Calculate default local directory (where the frontend resides)
                         const pluginModule = require(filePath);
                         if (pluginModule && pluginModule.pluginConfig) {
                             const config = pluginModule.pluginConfig;
-                        
+
                         // Ricerca l'override tramite il nome del file descrittore locale
                         // per gestire correttamente versioni di branch diversi dello stesso plugin
                         let name = config.name;
                         let dyn = {};
                         
-                        const ovEntry = Object.entries(dynamicData).find(([n, d]) => d && d.localDescriptorName === file);
+                        const ovEntry = Object.entries(dynamicData).find(([n, d]) => d && (d.localDescriptorName === file || d.localDescriptorName === fileNameOnly));
                         if (ovEntry) {
                             name = ovEntry[0];
                             dyn = ovEntry[1];
@@ -693,13 +704,31 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
             const alreadyInList = pluginList.find(p => p.name === name);
             if (!alreadyInList) {
                 const ov = overrides[name];
-                const fileName = (ov.fileUrl ? ov.fileUrl.split('/').pop() : name.replace(/\s+/g, '') + '.js');
+                const fileName = (ov.localDescriptorName || (ov.fileUrl ? ov.fileUrl.split('/').pop() : name.replace(/\s+/g, '') + '.js')).split(/[\\/]/).pop();
+                const filePath = path.join(pluginsDir, fileName);
+                
+                let version = '0.0.0';
+                let author = 'Unknown';
+
+                // Se il file esiste fisicamente (anche se è di un branch), leggiamo la versione reale
+                if (fs.existsSync(filePath)) {
+                    try {
+                        const resolvedPath = require.resolve(filePath);
+                        delete require.cache[resolvedPath];
+                        const pluginModule = require(filePath);
+                        if (pluginModule && pluginModule.pluginConfig) {
+                            version = pluginModule.pluginConfig.version || '0.0.0';
+                            author = pluginModule.pluginConfig.author || 'Unknown';
+                        }
+                    } catch (e) {}
+                }
+
                 pluginList.push({
                     name: name,
-                    version: '0.0.0',
-                    author: 'Unknown',
+                    version: version,
+                    author: author,
                     fileName: fileName,
-                    fullPath: path.join(pluginsDir, fileName),
+                    fullPath: filePath,
                     ...ov,
                     isNew: true
                 });

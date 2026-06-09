@@ -9,7 +9,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.2.3';
+    const pluginVersion = '0.1.3';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -183,8 +183,8 @@
                 z-index: 10000;
                 max-height: 90vh;
                 overflow-y: auto;
-                width: 85%;
-                max-width: 1000px;
+                width: 92%;
+                max-width: 1200px;
                 display: none; /* Hidden by default on the home page */
             `;
         }
@@ -208,10 +208,10 @@
             
             <div id="updater-sort-controls" class="updater-list-item" style="background: transparent; border-left-color: transparent; border-bottom: 1px solid #333; border-radius: 0; margin-bottom: 10px; padding-top: 0; padding-bottom: 5px; opacity: 0.8; font-weight: bold; text-transform: uppercase; cursor: default; text-align: left;">
                 <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden; min-width: 0;">
-                    <div class="updater-sort-link" data-sort="name" style="flex: 0 0 25%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Name ↕</div>
+                    <div class="updater-sort-link" data-sort="name" style="flex: 0 0 28%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Name ↕</div>
                     <div class="updater-sort-link" data-sort="author" style="flex: 0 0 18%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Author ↕</div>
-                    <div class="updater-sort-link" data-sort="version" style="flex: 0 0 8%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Ver ↕</div>
-                    <div class="updater-sort-link" data-sort="branch" style="flex: 0 0 12%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Branch ↕</div>
+                    <div style="flex: 0 0 7%; color: #3fa9f5; font-size: 11px; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; box-sizing: border-box;">Local</div>
+                    <div style="flex: 0 0 9%; color: #3fa9f5; font-size: 11px; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; box-sizing: border-box;">GitHub</div>
                     <div class="updater-sort-link" data-sort="status" style="flex: 1; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Status ↕</div>
                 </div>
                 <div style="width: 160px; flex-shrink: 0; margin-left: 10px; display: flex;"></div>
@@ -358,6 +358,12 @@
                 const statusId = `status-${p.name.replace(/\s+/g, '_')}`;
                 const statusCell = document.getElementById(statusId);
                 if (!statusCell) return;
+
+                const remoteVerId = `remote-ver-${p.name.replace(/\s+/g, '_')}`;
+                const remoteVerCell = document.getElementById(remoteVerId);
+                if (remoteVerCell) {
+                    remoteVerCell.innerHTML = remoteVer ? `<span style="color: #fff;">${remoteVer}</span>` : '<span style="color: #777;">??</span>';
+                }
                 
                 const owner = resolveOwner(p, allPlugins);
                 let repo = p.name.replace(/\s+/g, '-');
@@ -533,7 +539,7 @@
                             pluginName: p.name,
                             rawBaseUrl: rawBaseUrl,
                             remoteDescriptorPath: remoteDescriptorPath,
-                            localDescriptorName: remoteDescriptorPath.split('/').pop(),
+                                localDescriptorName: (p.localDescriptorName || p.fileName || remoteDescriptorPath).split(/[\\/]/).pop(),
                             frontEndPath: p.frontEndPath,
                             localDir: p.localDir,
                             skipRecursive: skipRecursive
@@ -748,18 +754,7 @@
 
                     let targetPluginName = p.name;
                     let targetLocalDir = localDir;
-                    let targetDescriptorName = p.fileName || (fileUrl.split('/').pop());
-
-                    // Se viene inserito un branch non-main, creiamo una nuova entry (linea) se non esiste già con quel suffisso
-                    if (branch && branch !== 'main' && branch !== 'master') {
-                        // Evitiamo di aggiungere il suffisso se è già presente nel nome del plugin (es. Updater-develop)
-                        if (!p.name.endsWith('-' + branch)) {
-                            targetPluginName = `${p.name}-${branch}`;
-                            targetLocalDir = `${localDir}-${branch}`;
-                            const baseName = targetDescriptorName.endsWith('.js') ? targetDescriptorName.slice(0, -3) : targetDescriptorName;
-                            targetDescriptorName = `${baseName}-${branch}.js`;
-                        }
-                    }
+                    let targetDescriptorName = (p.fileName || fileUrl).split(/[\\/]/).pop();
 
                     try {
                         const res = await fetch('/plugins/Updater/save-override', {
@@ -948,14 +943,6 @@
                                     const feMatch = text.match(/frontEndPath\s*:\s*['"]([^'"]+)['"]/);
                                     let suggestedDir = (feMatch && feMatch[1].includes('/')) ? feMatch[1].split('/')[0] : "";
                                     
-                                    // Se stiamo scaricando da un branch specifico tramite URL, rendiamo separata l'installazione
-                                    if (urlBranch) {
-                                        const suffix = `-${urlBranch}`;
-                                        if (suggestedDir) suggestedDir += suffix;
-                                        // Modifichiamo anche il file descrittore per non collidere in /plugins/
-                                        const baseName = file.name.endsWith('.js') ? file.name.slice(0, -3) : file.name;
-                                        modal.querySelector('#add-file-path').value = file.path;
-                                    }
                                     modal.querySelector('#add-local-dir').value = suggestedDir;
                                     found = true;
                                     break;
@@ -1027,13 +1014,6 @@
                     let targetLocalDir = localDir;
                     let targetDescriptorName = descriptorFileName;
 
-                    if (branch && branch !== 'main' && branch !== 'master') {
-                        targetPluginName = `${originalPluginName}-${branch}`;
-                        targetLocalDir = `${localDir}-${branch}`;
-                        const baseName = descriptorFileName.endsWith('.js') ? descriptorFileName.slice(0, -3) : descriptorFileName;
-                        targetDescriptorName = `${baseName}-${branch}.js`;
-                    }
-
                     try {
                         // Step 1: Save the plugin configuration/overrides to the server
                         const res = await fetch('/plugins/Updater/save-override', {
@@ -1076,7 +1056,7 @@
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({
-                                        pluginName: pluginName,
+                                        pluginName: targetPluginName,
                                         downloadedFiles: updateData.files,
                                         notDownloadedFiles: updateData.notDownloadedFiles
                                     })
@@ -1091,7 +1071,7 @@
                             const fileList = updateData.files ? `\n\nDownloaded files:\n- ${updateData.files.join('\n- ')}` : '';
                             const skipList = updateData.notDownloadedFiles?.length > 0 ? `\n\nSkipped files (not downloaded):\n- ${updateData.notDownloadedFiles.join('\n- ')}` : '';
                             const postInstallMsg = "\n\nAfter loading a new plugin, you must also:\n1) In the fm-dx-webserver setup plugins page, activate the plugin;\n2) Save the new configuration;\n3) Clear the browser cache;\n4) Restart the server, if necessary.";
-                            alert(`Plugin "${pluginName}" added and installed successfully!${postInstallMsg}${fileList}${skipList}`);
+                            alert(`Plugin "${targetPluginName}" added and installed successfully!${postInstallMsg}${fileList}${skipList}`);
                             await refreshList();
                         } else {
                             alert("Error saving plugin.");
@@ -1673,15 +1653,15 @@
                 
                 li.innerHTML = `
                     <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden; min-width: 0;">
-                        <div class="updater-title" style="flex: 0 0 25%; color: #3fa9f5; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; min-width: 0; text-align: left !important;" title="${p.fullPath || ''}">${p.name || 'Unknown'}</div>
+                        <div class="updater-title" style="flex: 0 0 28%; color: #3fa9f5; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; min-width: 0; text-align: left !important;" title="${p.fullPath || ''}">${p.name || 'Unknown'}</div>
                         <div class="updater-subtitle" style="flex: 0 0 18%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
                             ${p.author || 'Unknown'}
                         </div>
-                        <div class="updater-subtitle" style="flex: 0 0 8%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
-                            v<span style="color: #fff;">${p.version || '??'}</span>
+                        <div class="updater-subtitle" style="flex: 0 0 7%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
+                            v<span style="color: #fff;">${p.version}</span>
                         </div>
-                        <div class="updater-subtitle" style="flex: 0 0 12%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
-                            <span style="color: #777;"><i class="fa-solid fa-code-branch" style="font-size: 10px;"></i> ${p.branch || 'main'}</span>
+                        <div id="remote-ver-${p.name.replace(/\s+/g, '_')}" class="updater-subtitle" style="flex: 0 0 9%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
+                            ${p.cachedRemoteVer ? `<span style="color: #fff;">${p.cachedRemoteVer}</span>` : '<span style="color: #666; font-style: italic;">...</span>'}
                         </div>
                         <div id="status-${p.name.replace(/\s+/g, '_')}" style="flex: 1; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
                             <span style="color: #666; font-style: italic;">Checking...</span>
