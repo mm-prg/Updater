@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.1.3d)
+ * Updater Plugin for FM-DX Webserver (v. 0.1.4)
  * ************************************************
  */
 
@@ -527,31 +527,39 @@ endpointsRouter.get('/plugins/Updater/read-file', (req, res) => {
  * Endpoint to delete a plugin from the server
  */
 endpointsRouter.post('/plugins/Updater/delete-plugin', express.json(), (req, res) => {
-    const { pluginName, fileName, localDir } = req.body;
+    const { pluginName, logicalName, fileName, localDir } = req.body;
     try {
         logInfo(`[Updater] Request to delete plugin: ${pluginName}`);
 
-        // Step 1: Remove the main descriptor file (e.g., /plugins/PluginName.js)
-        if (fileName) {
-            const filePath = path.join(pluginsDir, fileName);
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-                logInfo(`[Updater] Deleted descriptor: ${filePath}`);
-            }
-        }
+        const overrides = loadOverrides();
+        const pluginData = overrides[pluginName];
+        const isSecondaryBranch = pluginData && pluginData.branch && pluginData.branch !== 'main';
 
-        // Step 2: Remove the local plugin directory (e.g., /plugins/PluginFolder/)
-        // Safety check: ensure localDir is not empty or pointing to restricted paths
-        if (localDir && localDir !== "" && localDir !== "." && localDir !== "..") {
-            const dirPath = path.join(pluginsDir, localDir);
-            if (fs.existsSync(dirPath)) {
-                fs.rmSync(dirPath, { recursive: true, force: true });
-                logInfo(`[Updater] Deleted directory: ${dirPath}`);
+        if (isSecondaryBranch) {
+            logInfo(`[Updater] Skipping file deletion for secondary branch: "${pluginName}" (branch: ${pluginData.branch}). Only removing entry from plugins_data.json.`);
+        } else {
+            // Only delete files if it's the main entry or a standalone plugin
+            // Step 1: Remove the main descriptor file (e.g., /plugins/PluginName.js)
+            if (fileName) {
+                const filePath = path.join(pluginsDir, fileName);
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                    logInfo(`[Updater] Deleted descriptor: ${filePath}`);
+                }
+            }
+
+            // Step 2: Remove the local plugin directory (e.g., /plugins/PluginFolder/)
+            // Safety check: ensure localDir is not empty or pointing to restricted paths
+            if (localDir && localDir !== "" && localDir !== "." && localDir !== "..") {
+                const dirPath = path.join(pluginsDir, localDir);
+                if (fs.existsSync(dirPath)) {
+                    fs.rmSync(dirPath, { recursive: true, force: true });
+                    logInfo(`[Updater] Deleted directory: ${dirPath}`);
+                }
             }
         }
 
         // Step 3: Remove the plugin's entry from plugins_data.json
-        const overrides = loadOverrides();
         if (overrides[pluginName]) {
             delete overrides[pluginName];
             saveOverrides(overrides); // This will save the modified overrides (without the deleted plugin) to plugins_data.json

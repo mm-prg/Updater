@@ -9,7 +9,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.1.3d';
+    const pluginVersion = '0.1.4';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -581,9 +581,14 @@
             }
 
             async function performDelete(p) {
-                // Construct the confirmation message with details about what will be removed
-                let confirmMsg = `Are you sure you want to delete the plugin "${p.name}"?\n\nThis will remove:\n- The descriptor file: ${p.fileName}\n- The local directory: ${p.localDir || '(none)'}\n\nTHIS ACTION CANNOT BE UNDONE.`;
+                const isSecondaryBranch = p.branch && p.branch !== 'main';
+                let confirmMsg = `Are you sure you want to delete the plugin "${p.name}"?\n\n`;
                 
+                if (isSecondaryBranch) {
+                    confirmMsg += `This will remove only the entry for this branch from the plugin list. Local files will NOT be deleted.`;
+                } else {
+                    confirmMsg += `This will remove:\n- The descriptor file: ${p.fileName}\n- The local directory: ${p.localDir || '(none)'}\n\nTHIS ACTION CANNOT BE UNDONE.`;
+                }
                 // Add a critical warning if the user is trying to delete the Updater plugin itself
                 if (p.name === 'Updater') {
                     confirmMsg += `\n\n⚠️ CRITICAL WARNING: You are about to delete the UPDATER plugin itself. This will remove this management interface and the ability to update other plugins!`;
@@ -603,7 +608,8 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            pluginName: (p.branch && p.branch !== 'main') ? p.name : (p.logicalName || p.name),
+                            pluginName: p.name, // Send the full name as displayed
+                            logicalName: p.logicalName || p.name.split(' (')[0], // Send the logical name for backend lookup
                             fileName: p.fileName,
                             localDir: p.localDir
                         })
@@ -1003,6 +1009,29 @@
                     let targetLocalDir = localDir;
                     let targetDescriptorName = descriptorFileName;
 
+                    // Se nell'URL è indicato un branch secondario (es. .../tree/develop)
+                    // creiamo due linee: una per il branch principale (solo metadati) e una per il branch richiesto.
+                    const hasTree = repoUrl.includes('/tree/');
+                    if (hasTree && branch && branch !== 'main') {
+                        try {
+                            const mainRepoUrl = repoUrl.split('/tree/')[0];
+                            await fetch('/plugins/Updater/save-override', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    pluginName: originalPluginName,
+                                    repoUrl: mainRepoUrl,
+                                    fileUrl: foundFileUrl,
+                                    localDir: targetLocalDir,
+                                    branch: 'main',
+                                    localDescriptorName: targetDescriptorName
+                                })
+                            });
+                            // La voce del branch specifico avrà il nome esteso
+                            targetPluginName = `${originalPluginName} (${branch})`;
+                        } catch (e) { console.error("[Updater] Errore creazione voce main:", e); }
+                    }
+
                     try {
                         // Step 1: Save the plugin configuration/overrides to the server
                         const res = await fetch('/plugins/Updater/save-override', {
@@ -1010,6 +1039,7 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 pluginName: targetPluginName,
+                                logicalName: originalPluginName,
                                 repoUrl: repoUrl,
                                 fileUrl: foundFileUrl,
                                 localDir: targetLocalDir,
@@ -1753,6 +1783,7 @@
             currentPlugins = data.plugins || data;
             if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
 
+            /* Temporarily disabled version cache check
             // Verifica discordanza versione (Cache Detection)
             const selfInfo = currentPlugins.find(p => p.name === 'Updater');
             if (selfInfo && selfInfo.version !== pluginVersion) {
@@ -1763,6 +1794,7 @@
             // Rimuoviamo il warning se la versione torna ad essere corretta dopo un refresh
             const oldWarning = document.getElementById('updater-cache-warning');
             if (oldWarning && selfInfo && selfInfo.version === pluginVersion) oldWarning.remove();
+            */
 
             const status = document.getElementById('updater-status');
             if (currentPlugins.length === 0) {
@@ -1776,7 +1808,11 @@
             status.textContent = `Detected ${currentPlugins.length} plugins installed in the system.`;
         } catch (e) {
             console.error('[Updater] UI Error:', e);
-            document.getElementById('updater-status').textContent = "Error loading plugin data.";
+            const status = document.getElementById('updater-status');
+            if (status) {
+                status.textContent = "Il server è in fase di inizializzazione o i plugin sono ancora in caricamento. La pagina verrà ricaricata automaticamente tra 5 secondi...";
+            }
+            setTimeout(() => { location.reload(); }, 5000);
         }
     }
 
