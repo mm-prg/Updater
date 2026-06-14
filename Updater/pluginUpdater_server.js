@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.1.4)
+ * Updater Plugin for FM-DX Webserver (v. 0.1.5)
  * ************************************************
  */
 
@@ -17,9 +17,12 @@ const endpointsRouter = require('../../server/endpoints');
 const { logInfo, logError } = require('../../server/console');
 
 const pluginName = "Updater";
-// The plugins directory is the one above this script's folder
+// The script is located in main/plugins/Updater/
+// To reach 'main/plugins/', we go up one level.
 const pluginsDir = path.resolve(__dirname, '..');
-const configsDir = path.resolve(pluginsDir, '..', 'plugins_configs');
+// To reach 'main/', we go up two levels.
+const serverRootDir = path.resolve(__dirname, '..', '..');
+const configsDir = path.resolve(serverRootDir, 'plugins_configs');
 
 // Path for manual settings (GitHub overrides)
 const repoDataPath = path.join(__dirname, 'repo_data.json'); // Static file (known)
@@ -32,10 +35,17 @@ if (!fs.existsSync(configsDir)) fs.mkdirSync(configsDir, { recursive: true });
 if (!fs.existsSync(overridesPath)) fs.writeFileSync(overridesPath, JSON.stringify({}, null, 2), 'utf8');
 if (!fs.existsSync(repoDataPath)) fs.writeFileSync(repoDataPath, JSON.stringify({}, null, 2), 'utf8');
 
-logInfo(`[${pluginName}] Backend script is being loaded...`);
+// Increase payload limit for the core server endpoint /data_plugins
+// to prevent 413 errors when saving a long list of plugins.
+endpointsRouter.use('/data_plugins', express.json({ limit: '10mb' }));
+
+//  logInfo(`[${pluginName}] Backend script is being loaded...`);
 
 // Global variable to track the last known GitHub API rate limit
 let lastRateLimit = { remaining: '?', limit: '60', reset: 0 };
+
+// Global variable to track the terminal's current working directory
+let terminalCwd = process.cwd();
 
 function readJsonFile(filePath) {
     try {
@@ -252,27 +262,27 @@ endpointsRouter.get('/plugins/Updater/branches', async (req, res) => {
 });
 
 /**
- * Endpoint di debug per visualizzare i file caricati nella cache di Node.js
+ * Debug endpoint to view files loaded in the Node.js cache
  */
 endpointsRouter.get('/plugins/Updater/debug-cache', (req, res) => {
-    // Restituisce un array con i percorsi assoluti di tutti i moduli attualmente in cache
+    // Returns an array with the absolute paths of all modules currently in cache
     const cacheKeys = Object.keys(require.cache);
-    logInfo(`[${pluginName}] Debug: Ispezione cache richiesta. ${cacheKeys.length} file in cache.`);
+//    logInfo(`[${pluginName}] Debug: Cache inspection requested. ${cacheKeys.length} files in cache.`);
     res.json(cacheKeys);
 });
 
 /**
  * Endpoint to retrieve global plugin options
  */
-endpointsRouter.get('/plugins/Updater/settings', (req, res) => {
+endpointsRouter.get('/plugins/Updater/settings', express.json({ limit: '10mb' }), (req, res) => {
     const settings = readJsonFile(settingsPath);
-    res.json(settings.showInPluginPanel !== undefined ? settings : { showInPluginPanel: true, showInHeader: true, showInSetup: true, advancedMode: false });
+    res.json(settings.showInPluginPanel !== undefined ? settings : { showInPluginPanel: true, showInHeader: true, showInSetup: true, advancedMode: true });
 });
 
 /**
  * Endpoint to save global plugin options
  */
-endpointsRouter.post('/plugins/Updater/settings', express.json(), (req, res) => {
+endpointsRouter.post('/plugins/Updater/settings', express.json({ limit: '10mb' }), (req, res) => {
     try {
         fs.writeFileSync(settingsPath, JSON.stringify(req.body, null, 2), 'utf8');
         res.json({ ok: true });
@@ -285,11 +295,11 @@ endpointsRouter.post('/plugins/Updater/settings', express.json(), (req, res) => 
 /**
  * Endpoint to save manual GitHub data
  */
-endpointsRouter.post('/plugins/Updater/save-override', express.json(), (req, res) => {
+endpointsRouter.post('/plugins/Updater/save-override', express.json({ limit: '10mb' }), (req, res) => {
     try {
         const { pluginName: name, repoUrl, fileUrl, localDir, branch, downloadedFiles, notDownloadedFiles, localDescriptorName } = req.body; // Merge new data with existing ones to avoid losing information
 
-        // Se il plugin ha un URL repository e non è ancora presente in repo_data.json, lo aggiungiamo
+        // If the plugin has a repository URL and is not yet in repo_data.json, add it
         const rawStatic = readJsonFile(repoDataPath);
         if (repoUrl && !rawStatic[name]) {
             rawStatic[name] = repoUrl;
@@ -330,7 +340,7 @@ endpointsRouter.post('/plugins/Updater/save-override', express.json(), (req, res
 /**
  * Endpoint to perform a plugin update (downloads files from GitHub)
  */
-endpointsRouter.post('/plugins/Updater/update-plugin', express.json(), async (req, res) => {
+endpointsRouter.post('/plugins/Updater/update-plugin', express.json({ limit: '10mb' }), async (req, res) => {
     // Destructure required parameters from the request body
     const { pluginName, rawBaseUrl, remoteDescriptorPath, localDescriptorName, localDir } = req.body;
     try {
@@ -412,7 +422,9 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json(), async (re
 endpointsRouter.get('/plugins/Updater/list-dir', (req, res) => {
     const relativePath = req.query.path || '';
     const root = req.query.root;
-    const baseDir = root === 'configs' ? configsDir : pluginsDir;
+    let baseDir = pluginsDir;
+    if (root === 'configs') baseDir = configsDir;
+    else if (root === 'server') baseDir = serverRootDir;
     const absolutePath = path.resolve(baseDir, relativePath);
     
     // Security: check that the path is inside the allowed folder
@@ -437,23 +449,27 @@ endpointsRouter.get('/plugins/Updater/list-dir', (req, res) => {
 /**
  * Endpoint to save content to a file within the plugins folder
  */
-endpointsRouter.post('/plugins/Updater/save-file', express.json(), (req, res) => {
+endpointsRouter.post('/plugins/Updater/save-file', express.json({ limit: '10mb' }), (req, res) => {
     const { fileName, content, root } = req.body;
     if (!fileName || content === undefined) return res.status(400).send('Missing fileName or content');
 
-    const baseDir = root === 'configs' ? configsDir : pluginsDir;
+    let baseDir = pluginsDir;
+    if (root === 'configs') baseDir = configsDir;
+    else if (root === 'server') baseDir = serverRootDir;
     const filePath = path.resolve(baseDir, fileName);
 
     // Security: check that the file is inside the allowed folder
     const relative = path.relative(baseDir, filePath);
     const isSafe = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
 
-    if (!isSafe || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
-        logError(`[${pluginName}] Access denied or file not found for saving: ${filePath} (base: ${baseDir})`);
-        return res.status(403).send('Access denied or file not found');
+    if (!isSafe) {
+        logError(`[${pluginName}] Access denied for saving: ${filePath} (base: ${baseDir})`);
+        return res.status(403).send('Access denied');
     }
 
     try {
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(filePath, content, 'utf8');
         logInfo(`[${pluginName}] File saved: ${filePath}`);
         res.json({ ok: true });
@@ -464,13 +480,57 @@ endpointsRouter.post('/plugins/Updater/save-file', express.json(), (req, res) =>
 });
 
 /**
+ * Endpoint to scan local files belonging to a specific plugin (descriptor + local directory)
+ */
+endpointsRouter.get('/plugins/Updater/scan-local-files', (req, res) => {
+    const { fileName, localDir } = req.query;
+    const fileList = [];
+
+    try {
+        // 1. Add the descriptor file if it exists
+        if (fileName) {
+            const filePath = path.join(pluginsDir, fileName);
+            if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+                fileList.push(fileName);
+            }
+        }
+
+        // 2. Scan the local directory recursively
+        if (localDir && localDir !== "" && localDir !== "." && localDir !== "..") {
+            const fullDir = path.resolve(pluginsDir, localDir);
+            // Security check: ensure path is within plugins directory
+            if (fullDir.startsWith(pluginsDir) && fs.existsSync(fullDir) && fs.statSync(fullDir).isDirectory()) {
+                const scan = (dir) => {
+                    const entries = fs.readdirSync(dir, { withFileTypes: true });
+                    for (const entry of entries) {
+                        const resPath = path.join(dir, entry.name);
+                        if (entry.isDirectory()) {
+                            scan(resPath);
+                        } else {
+                            // Path relative to plugins directory, using forward slashes
+                            fileList.push(path.relative(pluginsDir, resPath).replace(/\\/g, '/'));
+                        }
+                    }
+                };
+                scan(fullDir);
+            }
+        }
+        res.json([...new Set(fileList)].sort());
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+/**
  * Endpoint to delete a file within the plugins folder
  */
-endpointsRouter.post('/plugins/Updater/delete-file', express.json(), (req, res) => {
+endpointsRouter.post('/plugins/Updater/delete-file', express.json({ limit: '10mb' }), (req, res) => {
     const { fileName, root } = req.body;
     if (!fileName) return res.status(400).send('Missing fileName');
 
-    const baseDir = root === 'configs' ? configsDir : pluginsDir;
+    let baseDir = pluginsDir;
+    if (root === 'configs') baseDir = configsDir;
+    else if (root === 'server') baseDir = serverRootDir;
     const filePath = path.resolve(baseDir, fileName);
 
     // Security: check that the file is inside the allowed folder
@@ -501,10 +561,12 @@ endpointsRouter.get('/plugins/Updater/read-file', (req, res) => {
     const { fileName, root } = req.query;
     if (!fileName) return res.status(400).send('Missing fileName');
     
-    const baseDir = root === 'configs' ? configsDir : pluginsDir;
+    let baseDir = pluginsDir;
+    if (root === 'configs') baseDir = configsDir;
+    else if (root === 'server') baseDir = serverRootDir;
     const filePath = path.resolve(baseDir, fileName);
     
-    logInfo(`[Updater] Read request for: ${fileName} (Root: ${root || 'plugins'})`);
+//    logInfo(`[Updater] Read request for: ${fileName} (Root: ${root || 'plugins'})`);
 
     // Security: check that the file is inside the allowed folder using relative path
     const relative = path.relative(baseDir, filePath);
@@ -526,7 +588,7 @@ endpointsRouter.get('/plugins/Updater/read-file', (req, res) => {
 /**
  * Endpoint to delete a plugin from the server
  */
-endpointsRouter.post('/plugins/Updater/delete-plugin', express.json(), (req, res) => {
+endpointsRouter.post('/plugins/Updater/delete-plugin', express.json({ limit: '10mb' }), (req, res) => {
     const { pluginName, logicalName, fileName, localDir } = req.body;
     try {
         logInfo(`[Updater] Request to delete plugin: ${pluginName}`);
@@ -581,25 +643,37 @@ endpointsRouter.post('/plugins/Updater/delete-plugin', express.json(), (req, res
  * and authorization checks to ensure only trusted administrators can access it.
  * The current implementation assumes the main server's middleware handles admin authentication.
  */
-endpointsRouter.post('/plugins/Updater/terminal-command', express.json(), (req, res) => {
+endpointsRouter.post('/plugins/Updater/terminal-command', express.json({ limit: '10mb' }), (req, res) => {
     // TODO: Implement robust server-side authentication and authorization checks here.
     // This is a critical security vulnerability if not properly protected.
     // Example: if (!req.user || !req.user.isAdmin) { return res.status(403).json({ ok: false, error: 'Unauthorized' }); }
 
     const { command } = req.body;
     if (!command) {
-        // Restituisce la directory di lavoro corrente se non viene fornito alcun comando
-        return res.json({ ok: true, stdout: '', stderr: '', cwd: process.cwd() });
+        return res.json({ ok: true, stdout: '', stderr: '', cwd: terminalCwd });
     }
 
-    logInfo(`[${pluginName}] Executing command: "${command}"`);
-    exec(command, (error, stdout, stderr) => {
-        if (error) {
-            logError(`[${pluginName}] Command execution failed: ${error.message}`);
-            return res.json({ ok: false, error: error.message, stdout, stderr, cwd: process.cwd() });
+    const cmdToExec = `${command} & cd`;
+    logInfo(`[${pluginName}] Executing terminal command: "${command}" (CWD: ${terminalCwd})`);
+    
+    exec(cmdToExec, { cwd: terminalCwd }, (error, stdout, stderr) => {
+        let output = stdout || '';
+        let newCwd = terminalCwd;
+
+        if (stdout) {
+            const lines = stdout.trim().split(/\r?\n/);
+            newCwd = lines.pop().trim(); // The last line is the result of the trailing 'cd'
+            output = lines.join('\n');   // The rest is the actual command output
         }
-        logInfo(`[${pluginName}] Command executed successfully.`);
-        res.json({ ok: true, stdout, stderr, cwd: process.cwd() });
+
+        terminalCwd = newCwd;
+
+        if (error) {
+            logError(`[${pluginName}] Command failed: ${error.message}`);
+            return res.json({ ok: false, error: error.message, stdout: output, stderr, cwd: terminalCwd });
+        }
+
+        res.json({ ok: true, stdout: output, stderr, cwd: terminalCwd });
     });
 });
 
@@ -612,7 +686,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
         const entries = fs.readdirSync(pluginsDir, { withFileTypes: true });
         const pluginList = [];
         
-        // Carichiamo i dati per gestire la priorità: Override > Code > repo_data
+        // Load data to manage priority: Override > Code > repo_data
         const dynamicData = readJsonFile(overridesPath);
         const rawStatic = readJsonFile(repoDataPath);
         const staticData = {};
@@ -623,7 +697,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
         let needsSave = false;
 
         const processedLogicalNames = new Set();
-        const localPluginsInfo = {}; // Memorizza i dati dei plugin locali per associarli ai branch
+        const localPluginsInfo = {}; // Stores local plugin data to associate them with branches
 
         for (const entry of entries) {
             if (entry.isFile() && entry.name.endsWith('.js')) {
@@ -634,7 +708,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                 // Skip only core server entry points and frontend-only files
                 if (fileNameOnly !== 'index.js' && !fileNameOnly.includes('.frontend.') && fileNameOnly !== 'server.js') {
                     try { 
-                        // Leggiamo il file come testo invece di usare require() per evitare crash con document/window
+                        // Read the file as text instead of using require() to avoid crashes with document/window
                         const text = fs.readFileSync(filePath, 'utf8');
                         
                         if (text.includes('pluginConfig')) {
@@ -646,7 +720,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                             if (!nameMatch) continue;
 
                             const pluginNameFromConfig = nameMatch[1].trim();
-//                            logInfo(`[Updater] Rilevato plugin locale: "${pluginNameFromConfig}" nel file ${file}`);
+//                            logInfo(`[Updater] Local plugin detected: "${pluginNameFromConfig}" in file ${file}`);
                             
                             // Avoid re-processing the same logical plugin if it has multiple files
                             if (processedLogicalNames.has(pluginNameFromConfig)) continue;
@@ -675,16 +749,16 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                                 branch: 'main',
                                 // Prioritize repoUrl/fileUrl/localDir from dynamicData if it's for 'main' or not branch-specific
                                 repoUrl: dynOverride.repoUrl || staticInfo.repoUrl,
-                                // Se l'override è per un branch diverso, la riga Main deve usare i default locali
+                                // If the override is for a different branch, the Main row must use local defaults
                                 fileUrl: (dynOverride.branch && dynOverride.branch !== 'main') ? config.frontEndPath : (dynOverride.fileUrl || config.frontEndPath),
                                 localDir: (dynOverride.branch && dynOverride.branch !== 'main') ? (path.dirname(config.frontEndPath).replace(/\\/g, '/') || '') : (dynOverride.localDir || path.dirname(config.frontEndPath).replace(/\\/g, '/') || '')
                             };
 
-                            // Memorizziamo i dati locali per la successiva scansione dei branch
+                            // Store local data for subsequent branch scanning
                             localPluginsInfo[pluginNameFromConfig] = { config, localDescriptorName, filePath };
                             processedLogicalNames.add(pluginNameFromConfig);
 
-                            // Applica altri override solo se sono specifici per il main o generici
+                            // Apply other overrides only if they are specific to main or generic
                             if (!dynOverride.branch || dynOverride.branch === 'main') {
                                 Object.assign(mainEntry, dynOverride);
                                 mainEntry.branch = 'main';
@@ -708,7 +782,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                                     Object.assign(mainEntry, discovered);
                                 }
                             }
-//                            logInfo(`[Updater] Aggiunta riga Main per "${pluginNameFromConfig}" (branch: main)`);
+//                            logInfo(`[Updater] Added Main row for "${pluginNameFromConfig}" (branch: main)`);
                             pluginList.push(mainEntry); // Add main entry
                         } // Skip files that are not valid modules or don't contain pluginConfig
                     } catch (err) {
@@ -719,46 +793,46 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
             }
         }
 
-        // --- Fase 2: Scansione di plugins_data.json per aggiungere tutti i branch secondari (branch != main) ---
-        logInfo(`[Updater] Plugin locali rilevati sul disco: [${Object.keys(localPluginsInfo).join(', ')}]`);
-        logInfo(`[Updater] Scansione plugins_data.json per aggiungere i branch secondari rilevati...`);
+        // --- Phase 2: Scan plugins_data.json to add all secondary branches (branch != main) ---
+        logInfo(`[Updater] Local plugins detected on disk: [${Object.keys(localPluginsInfo).join(', ')}]`);
+        logInfo(`[Updater] Scanning plugins_data.json to add detected secondary branches...`);
         
         const jsonEntries = Object.entries(dynamicData);
-        logInfo(`[Updater] Numero entry trovate nel file JSON: ${jsonEntries.length}`);
+        logInfo(`[Updater] Number of entries found in JSON file: ${jsonEntries.length}`);
 
         for (const [ovrKey, ovrData] of jsonEntries) {
-//            logInfo(`[Updater] Analizzando entry JSON: "${ovrKey}"`);
+//            logInfo(`[Updater] Analyzing JSON entry: "${ovrKey}"`);
             
             if (!ovrData || typeof ovrData !== 'object') {
-              logInfo(`[Updater] -> Saltata entry "${ovrKey}": dati non validi (null o non oggetto)`);
+//              logInfo(`[Updater] -> Skipped entry "${ovrKey}": invalid data (null or not an object)`);
                 continue;
             }
 
             if (!ovrData.branch || ovrData.branch === 'main') {
-//                logInfo(`[Updater] -> Saltata entry "${ovrKey}": branch mancante o impostato a "main"`);
+//                logInfo(`[Updater] -> Skipped entry "${ovrKey}": missing branch or set to "main"`);
                 continue;
             }
 
-            // Identifichiamo il plugin locale associato (es. da "FavStations (develop)" a "FavStations")
+            // Identify the associated local plugin (e.g., from "FavStations (develop)" to "FavStations")
             let logicalName = ovrData.logicalName || ovrKey.split(' (')[0];
             let localInfo = localPluginsInfo[logicalName];
 
-            // Se non troviamo corrispondenza per nome (es. "FavStations-dev0.2"), 
-            // cerchiamo se esiste un plugin locale che usa lo stesso file descrittore salvato nel JSON
+            // If no match found by name (e.g., "FavStations-dev0.2"), 
+            // check if a local plugin exists that uses the same descriptor file saved in JSON
             if (!localInfo && ovrData.localDescriptorName) {
                 const entryByFile = Object.entries(localPluginsInfo).find(([_, info]) => info.localDescriptorName === ovrData.localDescriptorName);
                 if (entryByFile) {
                     logicalName = entryByFile[0];
                     localInfo = entryByFile[1];
-//                    logInfo(`[Updater] -> Corrispondenza trovata tramite file: "${ovrData.localDescriptorName}" associato a "${logicalName}"`);
+//                    logInfo(`[Updater] -> Match found via file: "${ovrData.localDescriptorName}" associated with "${logicalName}"`);
                 }
             }
 
-//            logInfo(`[Updater] -> Branch "${ovrData.branch}" rilevato per "${ovrKey}". Cerco corrispondenza locale per: "${logicalName}"`);
+//            logInfo(`[Updater] -> Branch "${ovrData.branch}" detected for "${ovrKey}". Searching for local match for: "${logicalName}"`);
 
-            // Aggiungiamo il branch solo se il plugin principale è installato localmente
+            // Add the branch only if the main plugin is installed locally
             if (localInfo) {
-                logInfo(`[Updater] Plugin "${logicalName}" trovato localmente. Aggiunta riga branch: "${ovrKey}"`);
+                logInfo(`[Updater] Plugin "${logicalName}" found locally. Adding branch row: "${ovrKey}"`);
                 pluginList.push({
                     ...localInfo.config,
                     name: ovrKey,
@@ -770,18 +844,29 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                     branch: ovrData.branch
                 });
             } else {
-                logInfo(`[Updater] -> KO: Il plugin principale "${logicalName}" non è stato rilevato localmente. Verificare che il "name" in pluginConfig del file .js corrisponda esattamente a questa stringa.`);
+                logInfo(`[Updater] -> KO: The main plugin "${logicalName}" was not detected locally. Verify that the "name" in pluginConfig of the .js file matches this string exactly.`);
             }
         }
 
         if (needsSave) saveOverrides(dynamicData);
 
         logInfo(`[${pluginName}] Total logical plugins found: ${pluginList.length}`);
-        res.json({ plugins: pluginList, rateLimit: lastRateLimit });
+
+        // Read server version from package.json in the root directory
+        const serverPkgPath = path.join(serverRootDir, 'package.json');
+        let serverVersion = '0.0.0';
+        if (fs.existsSync(serverPkgPath)) {
+            try {
+                const pkg = JSON.parse(fs.readFileSync(serverPkgPath, 'utf8'));
+                serverVersion = pkg.version || '0.0.0';
+            } catch (e) {}
+        }
+
+        res.json({ plugins: pluginList, rateLimit: lastRateLimit, serverVersion });
     } catch (e) {
         logError(`[${pluginName}] Failed to read plugins directory:`, e);
         res.status(500).json([]);
     }
 });
 
-logInfo(`[${pluginName}] Backend initialized. Scanning directory: ${pluginsDir}`);
+// logInfo(`[${pluginName}] Backend initialized. Scanning directory: ${pluginsDir}`);

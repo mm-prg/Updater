@@ -9,7 +9,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.1.4';
+    const pluginVersion = '0.1.5';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -93,18 +93,18 @@
     async function initUpdater() {
         let currentPlugins = [];
 
-        // Retrieve settings from the server
-        let settings = { showInPluginPanel: true, showInHeader: true, showInSetup: true, advancedMode: false };
+        // Retrieve settings from the server (default advancedMode: true)
+        let settings = { showInPluginPanel: true, showInHeader: true, showInSetup: true, advancedMode: true };
         try {
             const settingsRes = await fetch('/plugins/Updater/settings?t=' + Date.now());
             if (settingsRes.ok) {
                 const data = await settingsRes.json();
-                // Caricamento parametri con fallback per migrazione da versioni precedenti
+                // Load parameters with fallback for migration from previous versions
                 settings = {
                     showInPluginPanel: data.showInPluginPanel ?? (data.visibility === 'both' || data.visibility === 'main' || true),
                     showInHeader: data.showInHeader ?? (data.visibility === 'both' || data.visibility === 'main' || true),
                     showInSetup: data.showInSetup ?? (data.visibility === 'both' || data.visibility === 'setup' || true),
-                    advancedMode: data.advancedMode ?? false
+                    advancedMode: data.advancedMode ?? true
                 };
             }
         } catch (e) {}
@@ -194,7 +194,7 @@
                 <h3 class="updater-title">Installed Plugins</h3>
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <a href="https://github.com/mm-prg/Updater" target="_blank" class="updater-btn" style="background:#333; color:#fff; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; width:32px; padding:6px;" title="Updater Repository"><i class="fa-solid fa-circle-question"></i></a>
-                    <button id="updater-config-btn" class="updater-btn" style="background:#333; color:#fff; display:${settings.advancedMode ? 'inline-flex' : 'none'}; align-items:center; justify-content:center; width:32px; padding:6px;" title="Configuration Files"><i class="fa-solid fa-file-code"></i></button>
+                    <button id="updater-config-btn" class="updater-btn" style="background:#333; color:#fff; display:${settings.advancedMode ? 'inline-flex' : 'none'}; align-items:center; justify-content:center; width:32px; padding:6px;" title="Advanced Tools"><i class="fa-solid fa-screwdriver-wrench"></i></button>
                     <button id="updater-options-btn" class="updater-btn" style="background:#333; color:#fff; display:inline-flex; align-items:center; justify-content:center; width:32px; padding:6px;" title="Options"><i class="fa-solid fa-gear"></i></button>
                     <span id="updater-version-tag" style="color: #777; font-size: 11px;">v${pluginVersion} (api left ?)</span>
                 </div>
@@ -202,6 +202,7 @@
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                 <div id="updater-status" class="updater-subtitle" style="color: #3fa9f5; font-weight: bold;">Scanning...</div>
                 <div style="display: flex; gap: 10px;">
+                    <button id="refresh-list-btn" class="updater-btn" style="width: fit-content; background: #333; color: #fff; border: 1px solid #444;" title="Re-scan the plugins directory to update the list"><i class="fa-solid fa-sync"></i> Refresh list</button>
                     <button id="add-plugin-btn" class="updater-btn updater-btn-primary" style="width: fit-content;" title="Install a new plugin by providing its GitHub repository URL">Add new plugin</button>
                 </div>
             </div>
@@ -260,6 +261,11 @@
         }
 
 
+        document.getElementById('refresh-list-btn').onclick = async () => {
+            const status = document.getElementById('updater-status');
+            if (status) status.textContent = "Refreshing list, please click on 'Refresh list' in a few seconds";
+            await refreshList();
+        };
         document.getElementById('add-plugin-btn').onclick = () => openAddModal(currentPlugins);
         document.getElementById('updater-options-btn').onclick = (event) => toggleOptionsDropdown(event);
         document.getElementById('updater-config-btn').onclick = (event) => toggleConfigFilesDropdown(event);
@@ -325,7 +331,7 @@
                     return;
                 }
 
-                console.log(`[Updater] Anchor trovato (${menuButton.id || 'per contenuto'}). Iniezione pulsante...`);
+//                console.log(`[Updater] Anchor trovato (${menuButton.id || 'per contenuto'}). Iniezione pulsante...`);
                 const headerBtn = document.createElement("div");
                 headerBtn.id = "updater-header-btn";
                 // Utilizza solo la classe standard 'headerButton' per evitare di ereditare stili indesiderati
@@ -342,7 +348,7 @@
                 headerBtn.style.color = "var(--color-4, #E6C269)"; // Usa un colore del tema per coerenza
 
                 menuButton.insertAdjacentElement("beforebegin", headerBtn);
-                console.log("[Updater] Header button inserted successfully.");
+//                console.log("[Updater] Header button inserted successfully.");
 
                 headerBtn.onclick = () => {
                     const overlay = document.getElementById(`${pluginId}-overlay`);
@@ -462,10 +468,43 @@
                 }
             }
 
+            async function checkServerUpdate(localVer) {
+                const status = document.getElementById('updater-status');
+                if (!status) return;
+                
+                try {
+                    const remoteUrl = 'https://raw.githubusercontent.com/NoobishSVK/fm-dx-webserver/main/package.json';
+                    const res = await fetch(remoteUrl + '?t=' + Date.now());
+                    if (!res.ok) return;
+                    const pkg = await res.json();
+                    const remoteVer = pkg.version;
+
+                    // Remove existing server status if any
+                    const existing = document.getElementById('updater-server-status');
+                    if (existing) existing.remove();
+
+                    const serverInfo = document.createElement('div');
+                    serverInfo.id = 'updater-server-status';
+                    serverInfo.style.cssText = 'font-size: 11px; margin-top: 5px; padding-top: 5px; border-top: 1px solid #333;';
+                    
+                    if (remoteVer && isNewer(localVer, remoteVer)) {
+                        serverInfo.style.color = '#fe0830';
+                        serverInfo.style.fontWeight = 'bold';
+                        serverInfo.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Server update available: v${remoteVer} (local: v${localVer}) <a href="https://github.com/NoobishSVK/fm-dx-webserver" target="_blank" style="color:#3fa9f5; text-decoration:underline; margin-left:5px;">Repo</a>`;
+                    } else {
+                        serverInfo.style.color = '#777';
+                        serverInfo.innerHTML = `<i class="fa-solid fa-check"></i> Server version: v${localVer} (Up to date)`;
+                    }
+                    status.appendChild(serverInfo);
+                } catch (e) {
+                    console.error('[Updater] Server version check failed:', e);
+                }
+            }
+
             async function refreshList() {
                 try {
                     const response = await fetch('/plugins/Updater/list?t=' + Date.now());
-                    if (!response.ok) throw new Error();
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     const data = await response.json();
                     const newList = data.plugins || data;
 
@@ -479,9 +518,12 @@
                     if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
                     sortPlugins(sortState.key, false);
                     const status = document.getElementById('updater-status');
-                    if (status) status.textContent = `Detected ${currentPlugins.length} plugins installed in the system.`;
+                    if (status) {
+                        status.innerHTML = `<div>Detected ${currentPlugins.length} plugins installed in the system.</div>`;
+                        if (data.serverVersion) checkServerUpdate(data.serverVersion);
+                    }
                 } catch (e) {
-                    console.error('[Updater] Refresh error:', e);
+                    console.log('[Updater] UI still initializing, please wait: ', e);
                 }
             }
 
@@ -496,7 +538,7 @@
                 }
                 if (!confirm(msg)) return;
 
-                // Se cambiamo branch, salviamo la preferenza sul server prima di procedere
+                // If changing branch, save the preference on the server before proceeding
                 if (branchOverride && branchOverride !== p.branch) {
                     try {
                         await fetch('/plugins/Updater/save-override', {
@@ -1009,8 +1051,8 @@
                     let targetLocalDir = localDir;
                     let targetDescriptorName = descriptorFileName;
 
-                    // Se nell'URL è indicato un branch secondario (es. .../tree/develop)
-                    // creiamo due linee: una per il branch principale (solo metadati) e una per il branch richiesto.
+                    // If a secondary branch is indicated in the URL (e.g. .../tree/develop)
+                    // create two rows: one for the main branch (metadata only) and one for the requested branch.
                     const hasTree = repoUrl.includes('/tree/');
                     if (hasTree && branch && branch !== 'main') {
                         try {
@@ -1027,9 +1069,9 @@
                                     localDescriptorName: targetDescriptorName
                                 })
                             });
-                            // La voce del branch specifico avrà il nome esteso
+                            // The specific branch entry will have the extended name
                             targetPluginName = `${originalPluginName} (${branch})`;
-                        } catch (e) { console.error("[Updater] Errore creazione voce main:", e); }
+                        } catch (e) { console.error("[Updater] Error creating main entry:", e); }
                     }
 
                     try {
@@ -1164,22 +1206,6 @@
                         }
                     } catch (e) { alert("Error saving settings."); }
                 };
-                dropdown.querySelector('#view-new-data-btn').onclick = async () => {
-                    try {
-                        const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent('Updater/plugins_data.json')}`);
-                        if (!res.ok) throw new Error();
-                        openViewFileModal('plugins_data.json', await res.text());
-                        dropdown.remove();
-                    } catch (e) { alert("Error reading file."); }
-                };
-                dropdown.querySelector('#view-repo-data-btn').onclick = async () => {
-                    try {
-                        const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent('Updater/repo_data.json')}`);
-                        if (!res.ok) throw new Error();
-                        openViewFileModal('repo_data.json', await res.text());
-                        dropdown.remove();
-                    } catch (e) { alert("Error reading file."); }
-                };
             }
 
             async function toggleConfigFilesDropdown(event) {
@@ -1196,13 +1222,15 @@
                 dropdown.id = 'updater-config-files-dropdown';
                 dropdown.style.cssText = `position:fixed; top:${rect.bottom + 5}px; left:${rect.left}px; background:#1a1a1a; border:1px solid #444; border-radius:4px; padding:12px; z-index:100002; width:260px; box-shadow:0 4px 20px rgba(0,0,0,0.8); color:#fff; font-size:13px;`;
                 dropdown.innerHTML = `
-                    <div style="margin-bottom:8px; font-weight:bold; color:#00ccff; font-size:11px; text-transform:uppercase;">Configuration Files</div>
-                    <button id="view-new-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-file-code"></i> plugins_data.json</button>
-                    <button id="view-repo-data-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-database"></i> repo_data.json</button>
-                    <!-- Temporarily removed advanced tools -->
-                    <!-- <div style="margin:12px 0 8px 0; border-top:1px solid #333; padding-top:12px; font-weight:bold; color:#ffaa00; font-size:11px; text-transform:uppercase;">Advanced Tools</div> -->
-                    <!-- <button id="menu-terminal-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-terminal"></i> Terminal</button> -->
-                    <!-- <button id="menu-cache-btn" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; text-align:left; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-memory"></i> Node.js Cache</button> -->
+                    <div style="margin-bottom:8px; font-weight:bold; color:#ffaa00; font-size:11px; text-transform:uppercase;">Advanced Tools</div>
+                    <button id="view-server-config-btn" title="Edit Fm-Dx-Webserver configuration file" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;">Fm-Dx-Webserver Configuration</button>
+                    <button id="opt-view-log" title="View server console log (serverlog.txt)" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;">View Server Log</button>
+                    <button id="menu-cache-btn" title="View modules currently loaded in the Node.js memory" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;">View Node.js Cache</button>
+                    <button id="menu-terminal-btn" title="Execute system commands" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;">Execute Terminal Commands</button>
+
+                    <div style="margin:12px 0 8px 0; border-top:1px solid #333; padding-top:12px; font-weight:bold; color:#00ccff; font-size:11px; text-transform:uppercase;">Plugins data</div>
+                    <button id="view-new-data-btn" title="Local plugins metadata" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;">plugins_data.json</button>
+                    <button id="view-repo-data-btn" title="Database of known plugin repositories" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; text-align:left;">repo_data.json</button>
                 `;
                 document.body.appendChild(dropdown);
                 const dRect = dropdown.getBoundingClientRect();
@@ -1231,6 +1259,24 @@
                         dropdown.remove();
                     } catch (e) { alert("Error reading file."); }
                 };
+                dropdown.querySelector('#view-server-config-btn').onclick = async () => {
+                    dropdown.remove();
+                    try {
+                        const res = await fetch(`/plugins/Updater/read-file?fileName=config.json&root=server&t=${Date.now()}`);
+                        if (!res.ok) throw new Error();
+                        const text = await res.text();
+                        openViewFileModal('config.json', text, [], [], 'config.json', '', '', 'server');
+                    } catch (e) { alert("Error reading server config.json."); }
+                };
+                dropdown.querySelector('#opt-view-log').onclick = async () => {
+                    dropdown.remove();
+                    try {
+                        const res = await fetch(`/plugins/Updater/read-file?fileName=serverlog.txt&root=server&t=${Date.now()}`);
+                        if (!res.ok) throw new Error();
+                        const text = await res.text();
+                        openViewFileModal('serverlog.txt', text, [], [], 'serverlog.txt', '', '', 'server', '', '', true);
+                    } catch (e) { alert("Error reading server log. File may not exist."); }
+                };
                 dropdown.querySelector('#menu-terminal-btn').onclick = () => {
                     openTerminalModal();
                     dropdown.remove();
@@ -1240,7 +1286,7 @@
                         const res = await fetch('/plugins/Updater/debug-cache?t=' + Date.now());
                         if (!res.ok) throw new Error();
                         const cache = await res.json();
-                        openViewFileModal('Node_Cache.txt', cache.sort().join('\n'));
+                        openViewFileModal('Node_Cache.txt', cache.sort().join('\n'), [], [], 'Internal Memory', '', '', 'server', '', '', true);
                         dropdown.remove();
                     } catch (e) {
                         alert("Error fetching Node.js cache info.");
@@ -1248,10 +1294,30 @@
                 };
             }
 
-            function openViewFileModal(fileName, content, downloadedFiles = [], notDownloadedFiles = [], fullPath = '', repoUrl = '', descriptorUrl = '', initialRoot = 'plugins') {
-                const textExtensions = ['.js', '.json', '.css', '.html', '.txt', '.md', '.py', '.sh', '.xml', '.yaml', '.yml', '.ini', '.conf'];
+        function openViewFileModal(fileName, content, downloadedFiles = [], notDownloadedFiles = [], fullPath = '', repoUrl = '', descriptorUrl = '', initialRoot = 'plugins', localDir = '', logicalName = '', forceReadOnly = false) {
+                const textExtensions = ['.js', '.json', '.css', '.html', '.txt', '.md', '.py', '.sh', '.xml', '.yaml', '.yml', '.ini', '.conf', '.log'];
                 const isTextFile = (name) => textExtensions.some(ext => name.toLowerCase().endsWith(ext));
+                const isEditableFile = (name, root) => {
+                    if (forceReadOnly) return false;
+                    if (!name) return false;
+                    if (root === 'server' && name !== 'config.json') return false; // Only config.json is editable in server root
+                    return isTextFile(name); // Must be a text file
+                };
+                const isDeletableFile = (name, root) => isEditableFile(name, root) && name !== 'config.json'; // Deletable if editable and not config.json
+
+                const isSidebarHidden = (root) => root === 'server';
                 let originalContent = content || '';
+
+                let currentExplorerPath = '';
+                if (fileName === 'serverlog.txt' && initialRoot === 'server') {
+                    const lines = originalContent.split('\n');
+                    let startIndex = -1;
+                    for (let i = lines.length - 1; i >= 0; i--) {
+                        if (lines[i].includes('[INFO] Web server has started on address')) { startIndex = i; break; }
+                    }
+                    if (startIndex !== -1) originalContent = lines.slice(startIndex).join('\n');
+                }
+
                 let currentRoot = initialRoot || 'plugins'; 
                 const getLocalPath = (p) => p.startsWith('plugins/') ? p.substring(8) : p;
 
@@ -1264,7 +1330,7 @@
                 const rootLabel = initialRoot === 'configs' ? 'configs' : 'plugins';
                 const header = document.createElement('div');
                 header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #ccc; padding-bottom:5px;';
-                header.insertAdjacentHTML('beforeend', `<h3 style="margin:0;"><i class="fa-solid fa-magnifying-glass" style="color:#3fa9f5;"></i> Explore [${rootLabel}]: <span class="sc-view-filename" style="color:#00ff00;">${fileName || 'Select a file'}</span></h3>`);
+                header.insertAdjacentHTML('beforeend', `<h3 style="margin:0;"><i class="fa-solid fa-magnifying-glass" style="color:#3fa9f5;"></i> Explore [${rootLabel}]: <span class="sc-view-filename" style="color:#3fa9f5;">${fileName || 'Select a file'}</span></h3>`);
                 
                 const closeBtn = document.createElement('button');
                 closeBtn.textContent = '×';
@@ -1278,53 +1344,114 @@
                 modal.appendChild(mainArea);
 
                 const sidebar = document.createElement('div');
-                sidebar.style.cssText = 'flex: 0 0 300px; display:flex; flex-direction:column; border-right:1px solid #eee; padding-right:15px; overflow-y:auto;';
+                const hideSidebar = isSidebarHidden(initialRoot);
+                sidebar.style.cssText = `flex: 0 0 300px; display:${hideSidebar ? 'none' : 'flex'}; flex-direction:column; border-right:1px solid #eee; padding-right:15px; overflow-y:auto;`;
                 mainArea.appendChild(sidebar);
 
                 const editorArea = document.createElement('div');
                 editorArea.style.cssText = 'flex-grow:1; display:flex; flex-direction:column; overflow:hidden;';
                 mainArea.appendChild(editorArea);
 
-                const infoContainer = document.createElement('div');
-                editorArea.appendChild(infoContainer);
+                const filterContainer = document.createElement('div');
+                const showToolbar = fileName && (isTextFile(fileName) || forceReadOnly);
+                filterContainer.style.cssText = `margin-bottom: 10px; display: ${showToolbar ? 'flex' : 'none'}; align-items: center; gap: 15px; background: #f4f4f4; padding: 8px; border-radius: 4px; border: 1px solid #ddd;`;
+                filterContainer.innerHTML = `
+                    <div id="log-filter-section" style="display: ${forceReadOnly ? 'flex' : 'none'}; align-items: center; gap: 10px; flex-grow: 1;">
+                        <i class="fa-solid fa-filter" style="color: #3fa9f5;"></i>
+                        <span style="font-size: 12px; font-weight: bold; color: #555;">Fast Filter:</span>
+                        <input type="text" id="log-filter-input" placeholder="Type to filter lines (e.g. Updater)..." style="flex-grow: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; outline: none; background: #fff; color: #333;">
+                        <span id="log-filter-count" style="font-size: 11px; color: #777; white-space: nowrap;"></span>
+                    </div>
+                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 12px; font-weight: bold; color: #555; white-space: nowrap; user-select: none;">
+                        <input type="checkbox" id="word-wrap-toggle"> Word Wrap
+                    </label>
+                `;
+                editorArea.appendChild(filterContainer);
 
-                const updateInfo = (fName, fPath, rUrl, dUrl) => {
-                    infoContainer.innerHTML = '';
-                    if (dUrl) {
-                        const div = document.createElement('div');
-                        div.style.cssText = 'font-size: 11px; color: #777; margin-bottom: 5px; font-family: monospace; background: #f4f4f4; padding: 4px 8px; border-left: 3px solid #3fa9f5;';
-                        div.innerHTML = `<strong>GitHub File:</strong> <a href="${dUrl}" target="_blank" style="color:#0066cc;">${dUrl}</a>`;
-                        infoContainer.appendChild(div);
-                    }
-                    if (fPath) {
-                        const div = document.createElement('div');
-                        div.style.cssText = 'font-size: 11px; color: #777; margin-bottom: 10px; font-family: monospace; background: #f4f4f4; padding: 4px 8px; border-left: 3px solid #00ff00;';
-                        div.innerHTML = `<strong>Local:</strong> ${fPath}`;
-                        infoContainer.appendChild(div);
-                    }
+                const filterSection = filterContainer.querySelector('#log-filter-section');
+                const filterInput = filterContainer.querySelector('#log-filter-input');
+                const filterCount = filterContainer.querySelector('#log-filter-count');
+                const wrapToggle = filterContainer.querySelector('#word-wrap-toggle');
+
+                wrapToggle.onchange = () => {
+                    const isWrapped = wrapToggle.checked;
+                    codeArea.style.whiteSpace = isWrapped ? 'pre-wrap' : 'pre';
+                    lineNumbers.style.display = isWrapped ? 'none' : 'block';
                 };
-                updateInfo(fileName, fullPath, repoUrl, descriptorUrl);
+
+                if (forceReadOnly) {
+                    const total = originalContent ? originalContent.split('\n').length : 0;
+                    filterCount.textContent = `Total lines: ${total}`;
+                }
+
+                const codeWrapper = document.createElement('div');
+                codeWrapper.style.cssText = 'flex-grow:1; display:flex; overflow:hidden; border:1px solid #ddd; border-radius:4px; background:#f9f9f9;';
+                editorArea.appendChild(codeWrapper);
+
+                const lineNumbers = document.createElement('div');
+                lineNumbers.style.cssText = 'padding:10px 8px; background:#f4f4f4; border-right:1px solid #ddd; color:#999; text-align:right; font-family:monospace; font-size:12px; line-height:1.5; user-select:none; min-width:35px; overflow:hidden; white-space:pre;';
+                codeWrapper.appendChild(lineNumbers);
 
                 const codeArea = document.createElement('textarea');
                 codeArea.readOnly = true; // Default to read-only
-                codeArea.style.cssText = 'flex-grow:1; width:100%; font-family:monospace; font-size:12px; padding:10px; border:1px solid #ddd; border-radius:4px; white-space:pre; overflow:auto; background:#f9f9f9; resize:none; color:#333;';
+                codeArea.style.cssText = 'flex-grow:1; border:none; padding:10px; font-family:monospace; font-size:12px; line-height:1.5; white-space:pre; overflow:auto; background:transparent; resize:none; color:#333; outline:none;';
+                codeWrapper.appendChild(codeArea);
+
+                codeArea.onscroll = () => { lineNumbers.scrollTop = codeArea.scrollTop; };
                 
+                const setEditorValue = (text, updateTextarea = true, customLineNumbers = null) => {
+                    if (updateTextarea) codeArea.value = text;
+                    let gutterContent = '';
+                    if (customLineNumbers) {
+                        customLineNumbers.forEach(n => gutterContent += (n + 1) + '\n');
+                    } else {
+                        const linesCount = text ? text.split('\n').length : 0;
+                        for (let i = 1; i <= linesCount; i++) gutterContent += i + '\n';
+                    }
+                    lineNumbers.textContent = gutterContent;
+                };
+
+                codeArea.oninput = () => setEditorValue(codeArea.value, false);
+
+                filterInput.oninput = () => {
+                    const term = filterInput.value.toLowerCase();
+                    const lines = originalContent.split('\n');
+                    const total = originalContent ? lines.length : 0;
+                    if (!term) {
+                        setEditorValue(originalContent);
+                        filterCount.textContent = `Total lines: ${total}`;
+                        return;
+                    }
+                    const filtered = lines.map((line, idx) => ({ line, idx }))
+                                         .filter(item => item.line.toLowerCase().includes(term));
+                    setEditorValue(filtered.map(i => i.line).join('\n'), true, filtered.map(i => i.idx));
+                    filterCount.textContent = `Showing ${filtered.length} of ${total} lines`;
+                };
+
                 if (!fileName) {
-                    codeArea.value = 'Select a file from the explorer to view its content.';
+                    setEditorValue('Select a file from the explorer to view its content.');
                 } else if (isTextFile(fileName)) {
-                    codeArea.value = content;
+                    setEditorValue(originalContent);
+                    if (forceReadOnly) {
+                        setTimeout(() => { codeArea.scrollTop = codeArea.scrollHeight; }, 50);
+                    }
                 } else {
-                    codeArea.value = `[INFO] The file "${fileName}" is in a non-textual format and cannot be displayed here.`;
+                    setEditorValue(`[INFO] The file "${fileName}" is in a non-textual format and cannot be displayed here.`);
                     codeArea.style.color = "#777";
                 }
-                editorArea.appendChild(codeArea);
 
                 const loadFileContent = async (targetFile) => {
                     codeArea.style.color = "#333";
-                    codeArea.value = `Loading ${targetFile}...`;
+                    setEditorValue(`Loading ${targetFile}...`);
                     const nameSpan = header.querySelector('.sc-view-filename');
                     if (nameSpan) nameSpan.textContent = targetFile;
                     
+                    filterInput.value = '';
+                    // Display filter only if the modal was opened in log mode (forceReadOnly)
+                    filterSection.style.display = forceReadOnly ? 'flex' : 'none';
+                    filterContainer.style.display = isTextFile(targetFile) ? 'flex' : 'none';
+                    sidebar.style.display = isSidebarHidden(currentRoot) ? 'none' : 'flex';
+
                     if (!isTextFile(targetFile)) {
                         codeArea.value = `[INFO] File "${targetFile}" is non-textual.`;
                         codeArea.style.color = "#777";
@@ -1334,15 +1461,28 @@
                         const res = await fetch(`/plugins/Updater/read-file?fileName=${encodeURIComponent(targetFile)}&root=${currentRoot}`);
                         if (!res.ok) throw new Error();
                         const fetchedText = await res.text();
-                        codeArea.value = fetchedText;
-                        originalContent = fetchedText;
-                        updateInfo(targetFile, (currentRoot === 'configs' ? 'plugins_configs/' : 'plugins/') + targetFile, '', ''); 
-                    } catch (e) { codeArea.value = "Error reading file."; }
+                        let displayContent = fetchedText;
+                        if (targetFile === 'serverlog.txt' && currentRoot === 'server') {
+                            const lines = displayContent.split('\n');
+                            let startIndex = -1;
+                            for (let i = lines.length - 1; i >= 0; i--) {
+                                if (lines[i].includes('[INFO] Web server has started on address')) { startIndex = i; break; }
+                            }
+                            if (startIndex !== -1) displayContent = lines.slice(startIndex).join('\n');
+                        }
+                        setEditorValue(displayContent);
+                        originalContent = displayContent;
+                        if (forceReadOnly) {
+                            const total = originalContent ? originalContent.split('\n').length : 0;
+                            filterCount.textContent = `Total lines: ${total}`;
+                            setTimeout(() => { codeArea.scrollTop = codeArea.scrollHeight; }, 50);
+                        }
+                    } catch (e) { setEditorValue("Error reading file."); }
                     
                     codeArea.readOnly = true;
-                    codeArea.style.borderColor = '#ddd';
-                    enableEditBtn.style.display = 'block';
-                    deleteFileBtn.style.display = 'block';
+                    codeWrapper.style.borderColor = '#ddd';
+                    enableEditBtn.style.display = isEditableFile(targetFile, currentRoot) ? 'block' : 'none';
+                    deleteFileBtn.style.display = isDeletableFile(targetFile, currentRoot) ? 'block' : 'none';
                     saveBtnContainer.style.display = 'none';
                 };
 
@@ -1368,6 +1508,7 @@
 
                 const loadDir = async (path, container, root) => {
                     currentRoot = root;
+                    currentExplorerPath = path;
                     container.innerHTML = path ? `<div style="padding:8px 10px; font-size:12px; color:#3fa9f5; font-weight:bold; background:#f8f8f8; margin-bottom:5px; border-radius:4px; border-left:3px solid #3fa9f5;">${path}</div>` : '';
                     const ul = document.createElement('ul');
                     ul.style.cssText = 'list-style:none; padding:0; margin:0; font-size:13px;';
@@ -1398,31 +1539,94 @@
                 const pluginsSection = createExplorerSection('plugins', 'plugins');
                 const configsSection = createExplorerSection('plugins_configs', 'configs');
 
-                if (downloadedFiles && downloadedFiles.length > 0) {
-                    const metaDiv = document.createElement('div');
-                    metaDiv.style.cssText = 'margin-bottom:15px; background:#f0fff0; border:1px solid #c2e0c2; border-radius:4px; padding:10px;';
-                    metaDiv.innerHTML = `<div style="font-weight:bold; font-size:11px; color:#2d5a2d; margin-bottom:5px;">UPDATE RESULTS:</div>`;
-                    const metaUl = document.createElement('ul');
-                    metaUl.style.cssText = 'list-style:none; padding:0; margin:0; font-size:11px;';
-                    downloadedFiles.forEach(f => {
-                        const localF = getLocalPath(f);
-                        const li = document.createElement('li');
-                        li.style.cssText = 'color:#0066cc; cursor:pointer; text-decoration:underline; margin-bottom:2px;';
-                        li.textContent = localF;
-                        li.onclick = () => loadFileContent(localF);
-                        metaUl.appendChild(li);
-                    });
-                    metaDiv.appendChild(metaUl);
-                    sidebar.prepend(metaDiv);
-                }
+                const uploadBtn = document.createElement('button');
+                uploadBtn.innerHTML = '<i class="fa-solid fa-upload"></i> Upload File';
+                uploadBtn.title = "Upload a file from your PC to the current directory";
+                uploadBtn.style.cssText = 'width:100%; height:32px; line-height:32px; padding:0 10px; margin-bottom:15px; border:none; background:#3fa9f5; color:#fff; cursor:pointer; border-radius:4px; font-weight:bold; font-size:13px; flex-shrink:0; display:block;';
+                sidebar.insertBefore(uploadBtn, pluginsSection.btn);
+
+                uploadBtn.onclick = () => {
+                    const fileInput = document.createElement('input');
+                    fileInput.type = 'file';
+                    fileInput.onchange = (e) => {
+                        const file = e.target.files[0];
+                        if (!file) return;
+
+                        const rootPrefix = currentRoot === 'configs' ? 'plugins_configs' : (currentRoot === 'server' ? '' : 'plugins');
+                        const folder = currentExplorerPath || (logicalName || '');
+                        const relativeDefault = folder ? `${folder}/${file.name}` : file.name;
+                        const fullDefault = (rootPrefix ? rootPrefix + '\\' : '') + relativeDefault.replace(/\//g, '\\');
+
+                        const userPath = prompt("Confirm destination path:", fullDefault);
+                        if (userPath === null) return;
+
+                        let finalPath = userPath.replace(/\\/g, '/');
+                        if (rootPrefix && finalPath.startsWith(rootPrefix + '/')) {
+                            finalPath = finalPath.substring(rootPrefix.length + 1);
+                        }
+
+                        const reader = new FileReader();
+                        reader.onload = async (event) => {
+                            const content = event.target.result;
+                            try {
+                                const res = await fetch('/plugins/Updater/save-file', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ fileName: finalPath, content: content, root: currentRoot })
+                                });
+                                if (res.ok) {
+                                    alert('File uploaded successfully!');
+                                    const activeContainer = currentRoot === 'configs' ? configsSection.container : pluginsSection.container;
+                                    const parentDir = finalPath.includes('/') ? finalPath.substring(0, finalPath.lastIndexOf('/')) : '';
+                                    loadDir(parentDir, activeContainer, currentRoot);
+                                } else {
+                                    const msg = await res.text();
+                                    alert('Upload failed: ' + msg);
+                                }
+                            } catch (e) { alert('Connection error.'); }
+                        };
+                        reader.readAsText(file);
+                    };
+                    fileInput.click();
+                };
+
+                const localFilesContainer = document.createElement('div');
+                sidebar.prepend(localFilesContainer);
+
+                const scanLocalFiles = async () => {
+                    if (!fileName && !localDir) return;
+                    try {
+                        const res = await fetch(`/plugins/Updater/scan-local-files?fileName=${encodeURIComponent(fileName || '')}&localDir=${encodeURIComponent(localDir || '')}`);
+                        if (!res.ok) return;
+                        const files = await res.json();
+                        if (files.length > 0) {
+                            const metaDiv = document.createElement('div');
+                            metaDiv.style.cssText = 'margin-bottom:15px; background:#f0fff0; border:1px solid #c2e0c2; border-radius:4px; padding:10px; border-left: 3px solid #2d5a2d;';
+                            metaDiv.innerHTML = `<div style="font-weight:bold; font-size:11px; color:#2d5a2d; margin-bottom:8px; text-transform:uppercase;">Local Plugin Files:</div>`;
+                            const metaUl = document.createElement('ul');
+                            metaUl.style.cssText = 'list-style:none; padding:0; margin:0; font-size:11px; display:flex; flex-direction:column; gap:6px; font-family:monospace;';
+                            files.forEach(f => {
+                                const li = document.createElement('li');
+                                li.style.cursor = 'pointer';
+                                li.innerHTML = `<span style="color:#0066cc; text-decoration:underline;">${f}</span>`;
+                                li.onclick = () => { currentRoot = 'plugins'; loadFileContent(f); };
+                                metaUl.appendChild(li);
+                            });
+                            metaDiv.appendChild(metaUl);
+                            localFilesContainer.innerHTML = '';
+                            localFilesContainer.appendChild(metaDiv);
+                        }
+                    } catch (e) {}
+                };
+                scanLocalFiles();
 
                 // Show skipped files (files in the repo but not downloaded locally)
                 if (notDownloadedFiles && notDownloadedFiles.length > 0) {
                     const skipDiv = document.createElement('div');
-                    skipDiv.style.cssText = 'margin-bottom:15px; background:#fff8e1; border:1px solid #ffe082; border-radius:4px; padding:10px;';
-                    skipDiv.innerHTML = `<div style="font-weight:bold; font-size:11px; color:#856404; margin-bottom:5px;">SKIPPED (Not Downloaded):</div>`;
+                    skipDiv.style.cssText = 'margin-bottom:15px; background:#fff8e1; border:1px solid #ffe082; border-radius:4px; padding:10px; border-left: 3px solid #856404;';
+                    skipDiv.innerHTML = `<div style="font-weight:bold; font-size:11px; color:#856404; margin-bottom:8px; text-transform:uppercase;">SKIPPED (Not Downloaded):</div>`;
                     const skipUl = document.createElement('ul');
-                    skipUl.style.cssText = 'list-style:none; padding:0; margin:0; font-size:11px; color:#666;';
+                    skipUl.style.cssText = 'list-style:none; padding:0; margin:0; font-size:11px; display:flex; flex-direction:column; gap:4px; font-family:monospace; color:#666;';
                     notDownloadedFiles.forEach(f => {
                         const li = document.createElement('li');
                         li.style.marginBottom = '2px';
@@ -1433,12 +1637,17 @@
                     sidebar.prepend(skipDiv);
                 }
 
-                // Repository Link (moved to Sidebar Top)
+                // Repository Link Section (at the very top of the sidebar)
                 if (repoUrl) {
-                    const repoBox = document.createElement('div');
-                    repoBox.style.cssText = 'margin-bottom:15px; background:#f4f4f4; border:1px solid #ddd; border-radius:4px; padding:10px; border-left:3px solid #3fa9f5;';
-                    repoBox.innerHTML = `<div style="font-weight:bold; font-size:11px; color:#777; margin-bottom:5px;">REPOSITORY:</div><a href="${repoUrl}" target="_blank" style="color:#0066cc; font-size:11px; font-family:monospace; word-break:break-all;">${repoUrl}</a>`;
-                    sidebar.prepend(repoBox);
+                    const repoDiv = document.createElement('div');
+                    repoDiv.style.cssText = 'margin-bottom:15px; background:#eef9ff; border:1px solid #cceeff; border-radius:4px; padding:10px; border-left: 3px solid #3fa9f5;';
+                    repoDiv.innerHTML = `
+                        <div style="font-weight:bold; font-size:11px; color:#0066cc; margin-bottom:8px; text-transform:uppercase;">Repository:</div>
+                        <div style="font-size:11px; font-family:monospace; word-break:break-all;">
+                            <a href="${repoUrl}" target="_blank" style="color:#0066cc; text-decoration:underline;">${repoUrl}</a>
+                        </div>
+                    `;
+                    sidebar.prepend(repoDiv);
                 }
 
                 // Detect the initial directory to browse based on the file's path
@@ -1462,13 +1671,14 @@
                 enableEditBtn.innerHTML = '<i class="fa-solid fa-pencil"></i> Enable Editing';
                 enableEditBtn.title = "Unlock the editor to make manual changes to this file";
                 enableEditBtn.style.cssText = 'padding:8px 15px; border:none; background:#ffaa00; color:#fff; cursor:pointer; border-radius:4px; font-weight:bold;';
+                enableEditBtn.style.display = isEditableFile(fileName, currentRoot) ? 'block' : 'none';
                 footer.appendChild(enableEditBtn);
 
                 const deleteFileBtn = document.createElement('button');
                 deleteFileBtn.innerHTML = '<i class="fa-solid fa-trash"></i> Delete File';
                 deleteFileBtn.title = "Permanently delete this file from the server";
                 deleteFileBtn.style.cssText = 'padding:8px 15px; border:none; background:#fe0830; color:#fff; cursor:pointer; border-radius:4px; font-weight:bold;';
-                deleteFileBtn.style.display = fileName ? 'block' : 'none';
+                deleteFileBtn.style.display = isDeletableFile(fileName, currentRoot) ? 'block' : 'none';
                 footer.appendChild(deleteFileBtn);
 
                 const saveBtnContainer = document.createElement('div');
@@ -1494,7 +1704,7 @@
 
                     if (confirm("WARNING: Editing directly can break the plugin. Continue?")) {
                         codeArea.readOnly = false;
-                        codeArea.style.borderColor = '#00ff00';
+                        codeWrapper.style.borderColor = '#00ff00';
                         enableEditBtn.style.display = 'none';
                         deleteFileBtn.style.display = 'none';
                         saveBtnContainer.style.display = 'flex';
@@ -1535,11 +1745,11 @@
                 };
 
                 cancelBtn.onclick = () => {
-                    codeArea.value = originalContent;
+                    setEditorValue(originalContent);
                     codeArea.readOnly = true;
-                    codeArea.style.borderColor = '#ddd';
-                    enableEditBtn.style.display = 'block';
-                    deleteFileBtn.style.display = 'block';
+                    codeWrapper.style.borderColor = '#ddd';
+                    enableEditBtn.style.display = isEditableFile(fileName, currentRoot, forceReadOnly) ? 'block' : 'none';
+                    deleteFileBtn.style.display = isDeletableFile(fileName, currentRoot, forceReadOnly) ? 'block' : 'none';
                     saveBtnContainer.style.display = 'none';
                 };
 
@@ -1556,9 +1766,9 @@
                             alert('File saved!');
                             originalContent = codeArea.value;
                             codeArea.readOnly = true;
-                            codeArea.style.borderColor = '#ddd';
-                            enableEditBtn.style.display = 'block';
-                            deleteFileBtn.style.display = 'block';
+                            codeWrapper.style.borderColor = '#ddd';
+                            enableEditBtn.style.display = isEditableFile(currentFile, currentRoot, false) ? 'block' : 'none';
+                            deleteFileBtn.style.display = isDeletableFile(currentFile, currentRoot, false) ? 'block' : 'none';
                             saveBtnContainer.style.display = 'none';
                         }
                     } catch (e) { alert('Error saving.'); } finally { saveBtn.disabled = false; }
@@ -1573,41 +1783,43 @@
                 overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:100000; display:flex; align-items:center; justify-content:center; color:#000;';
                 
                 const modal = document.createElement('div');
-                modal.style.cssText = 'background:#1a1a1a; padding:20px; border-radius:8px; width:90%; max-width:800px; height:70vh; box-shadow:0 10px 25px rgba(0,0,0,0.5); display:flex; flex-direction:column;';
+                modal.style.cssText = 'background:#1a1a1a; padding:15px; border-radius:8px; width:95%; max-width:1200px; height:85vh; box-shadow:0 10px 25px rgba(0,0,0,0.5); display:flex; flex-direction:column; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;';
                 modal.innerHTML = `
-                    <h3 style="margin-top:0; color:#fff; border-bottom:1px solid #333; padding-bottom:10px;">Server Terminal <span style="font-size:12px; color:#ffaa00;">(Admin Only - Use with Caution!)</span></h3>
-                    <pre id="terminal-output" style="flex-grow:1; background:#000; color:#0f0; padding:10px; border-radius:4px; overflow-y:auto; font-family:monospace; font-size:13px; margin-bottom:10px; border:1px solid #333;">Welcome to the server terminal. Type 'help' for basic commands (if available on server).</pre>
-                    <div style="font-size: 11px; color: #bbb; margin-bottom: 10px; background: #252525; padding: 10px; border-radius: 4px; border-left: 3px solid #3fa9f5; line-height: 1.4;">
-                        <i class="fa-solid fa-terminal" style="color:#3fa9f5; margin-right:5px;"></i> 
-                        <b>Environment:</b> Windows (CMD.exe). Use commands like <code>dir</code>, <code>copy</code>, <code>del</code>, <code>tasklist</code> or <code>ping</code>.<br>
-                        <b>Note:</b> Each command is independent. To change directory and run a command, use <code>&&</code> (e.g.: <code>cd plugins && dir</code>).
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #333; padding-bottom:8px;">
+                        <h3 style="margin:0; color:#fff; font-size:16px;">Server Terminal <span style="font-size:11px; color:#ffaa00;">(node.js 'exec' commands)</span></h3>
+                        <button id="terminal-close-btn" class="updater-btn" style="background:#fe0830; color:#fff; padding:2px 10px; font-size:10px; border-radius:3px;">Close</button>
                     </div>
-                    <pre id="terminal-output" style="flex-grow:1; background:#000; color:#0f0; padding:10px; border-radius:4px; overflow-y:auto; font-family:monospace; font-size:13px; margin-bottom:10px; border:1px solid #333;">Welcome to the server terminal.</pre>
-                    <div style="display:flex; gap:10px; align-items:center; background:#333; padding:5px; border-radius:4px; border:1px solid #555;">
-                        <span id="terminal-prompt-path" style="color:#3fa9f5; font-family:monospace; font-size:13px; padding-left:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:250px;">... ></span>
-                        <input type="text" id="terminal-input" placeholder="Enter command..." style="flex-grow:1; background:transparent; color:#fff; border:none; outline:none; padding:8px; font-family:monospace; font-size:13px;">
-                        <button id="terminal-send-btn" class="updater-btn updater-btn-primary" style="width:auto; padding:8px 15px;">Send</button>
-                        <button id="terminal-clear-btn" class="updater-btn" style="background:#444; color:#fff; width:auto; padding:8px 15px;">Clear</button>
+
+                    <div id="terminal-container" style="flex-grow:1; background:#000; border:1px solid #333; border-radius:4px; overflow-y:auto; padding:15px; font-family:monospace; font-size:14px; line-height: 1.4; color:#0f0; cursor:text;">
+                        <div id="terminal-history" style="white-space: pre-wrap; word-break: break-all;">Welcome to the server terminal. Type 'help' for info.</div>
+                        <div style="display:flex; align-items:flex-start; margin-top:5px;">
+                            <span id="terminal-prompt-path" style="color:#3fa9f5; white-space:nowrap; margin-right:8px;">... ></span>
+                            <input type="text" id="terminal-input" autocomplete="off" spellcheck="false" style="flex-grow:1; background:transparent; color:#fff; border:none; outline:none; padding:0; margin:0; font-family:inherit; font-size:inherit; line-height:inherit;">
+                        </div>
                     </div>
-                    <button id="terminal-close-btn" class="updater-btn" style="background:#fe0830; color:#fff; margin-top:15px; padding:8px 15px;">Close</button>
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size: 10px; color: #555; margin-top:8px;">
+                        <span>CMD.exe (Windows) - Use <code>&&</code> to chain. Interactive programs like 'cmd' or 'powershell' are not supported.</span>
+                        <button id="terminal-clear-btn" style="background:transparent; border:none; color:#777; cursor:pointer; text-decoration:underline; font-size:10px;">Clear Screen</button>
+                    </div>
                 `;
 
                 overlay.appendChild(modal);
                 document.body.appendChild(overlay);
 
-                const terminalOutput = modal.querySelector('#terminal-output');
+                const terminalContainer = modal.querySelector('#terminal-container');
+                const terminalHistory = modal.querySelector('#terminal-history');
                 const terminalInput = modal.querySelector('#terminal-input');
-                const terminalSendBtn = modal.querySelector('#terminal-send-btn');
                 const terminalClearBtn = modal.querySelector('#terminal-clear-btn');
                 const terminalCloseBtn = modal.querySelector('#terminal-close-btn');
                 const terminalPromptPath = modal.querySelector('#terminal-prompt-path');
 
                 const appendOutput = (text, color = '#0f0') => {
+                    if (!text) return;
                     const span = document.createElement('span');
                     span.style.color = color;
-                    span.textContent = text + '\n';
-                    terminalOutput.appendChild(span);
-                    terminalOutput.scrollTop = terminalOutput.scrollHeight;
+                    span.textContent = text + (text.endsWith('\n') ? '' : '\n');
+                    terminalHistory.appendChild(span);
+                    terminalContainer.scrollTop = terminalContainer.scrollHeight;
                 };
 
                 const updatePrompt = (path) => {
@@ -1617,11 +1829,18 @@
                 const executeCommand = async () => {
                     const command = terminalInput.value.trim();
                     if (!command) return;
+                    
+                    if (command.toLowerCase() === 'cls' || command.toLowerCase() === 'clear') {
+                        terminalHistory.innerHTML = '';
+                        terminalInput.value = '';
+                        appendOutput('Terminal buffer cleared.', '#555');
+                        return;
+                    }
 
                     appendOutput(`> ${command}`, '#fff');
                     terminalInput.value = '';
-                    terminalSendBtn.disabled = true;
-                    terminalSendBtn.textContent = 'Executing...';
+                    terminalInput.disabled = true;
+                    terminalInput.placeholder = 'Executing...';
 
                     try {
                         const res = await fetch('/plugins/Updater/terminal-command', {
@@ -1641,8 +1860,9 @@
                     } catch (e) {
                         appendOutput(`Connection error: ${e.message}`, '#fe0830');
                     } finally {
-                        terminalSendBtn.disabled = false;
-                        terminalSendBtn.textContent = 'Send';
+                        terminalInput.disabled = false;
+                        terminalInput.placeholder = '';
+                        terminalInput.focus();
                     }
                 };
 
@@ -1656,8 +1876,8 @@
                 }).catch(() => updatePrompt('server'));
 
                 terminalInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') executeCommand(); });
-                terminalSendBtn.onclick = executeCommand;
-                terminalClearBtn.onclick = () => { terminalOutput.innerHTML = ''; appendOutput('Terminal cleared.', '#888'); };
+                terminalContainer.onclick = () => terminalInput.focus();
+                terminalClearBtn.onclick = () => { terminalHistory.innerHTML = ''; appendOutput('Terminal cleared.', '#555'); };
                 terminalCloseBtn.onclick = () => overlay.remove();
             }
 
@@ -1712,9 +1932,10 @@
                             if (match) repo = match[2];
                         }
                         const filePath = p.fileUrl || p.fileName;
-                        const descriptorUrl = filePath.startsWith('http') ? filePath : `https://github.com/${owner}/${repo}/blob/main/${filePath}`;
+                        const branch = p.branch || 'main';
+                        const descriptorUrl = filePath.startsWith('http') ? filePath : `https://github.com/${owner}/${repo}/blob/${branch}/${filePath}`;
 
-                        openViewFileModal(p.fileName, content, p.downloadedFiles, p.notDownloadedFiles, p.fullPath, p.repoUrl, descriptorUrl);
+                        openViewFileModal(p.fileName, content, p.downloadedFiles, p.notDownloadedFiles, p.fullPath, p.repoUrl, descriptorUrl, 'plugins', p.localDir, p.logicalName || p.name);
                     } catch (e) {
                         alert("Error: Could not read the local descriptor file.");
                     }
@@ -1764,7 +1985,7 @@
                     if (rankA !== rankB) {
                         return sortState.asc ? (rankA - rankB) : (rankB - rankA);
                     }
-                    // A parità di rank, ordina sempre per nome A-Z
+                    // For identical ranks, always sort by name A-Z
                     return (a.name || '').localeCompare(b.name || '');
                 } else {
                     let valA = a[key] || '';
@@ -1784,14 +2005,14 @@
             if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
 
             /* Temporarily disabled version cache check
-            // Verifica discordanza versione (Cache Detection)
+            // Version mismatch verification (Cache Detection)
             const selfInfo = currentPlugins.find(p => p.name === 'Updater');
             if (selfInfo && selfInfo.version !== pluginVersion) {
                 console.warn(`[Updater] Cache Mismatch! Browser: ${pluginVersion}, Server: ${selfInfo.version}`);
                 showCacheWarning(selfInfo.version);
             }
 
-            // Rimuoviamo il warning se la versione torna ad essere corretta dopo un refresh
+            // Remove the warning if the version becomes correct again after a refresh
             const oldWarning = document.getElementById('updater-cache-warning');
             if (oldWarning && selfInfo && selfInfo.version === pluginVersion) oldWarning.remove();
             */
@@ -1805,14 +2026,16 @@
                 link.onclick = () => sortPlugins(link.dataset.sort);
             });
             sortPlugins(sortState.key, false);
-            status.textContent = `Detected ${currentPlugins.length} plugins installed in the system.`;
+            if (status) {
+                status.innerHTML = `<div>Detected ${currentPlugins.length} plugins installed in the system.</div>`;
+                if (data.serverVersion) checkServerUpdate(data.serverVersion);
+            }
         } catch (e) {
-            console.error('[Updater] UI Error:', e);
+            console.log('[Updater] UI still initializing, please wait: ', e);
             const status = document.getElementById('updater-status');
             if (status) {
-                status.textContent = "Il server è in fase di inizializzazione o i plugin sono ancora in caricamento. La pagina verrà ricaricata automaticamente tra 5 secondi...";
+                status.textContent = "The server is initializing or plugins are still loading. Please refresh the list in a few seconds.";
             }
-            setTimeout(() => { location.reload(); }, 5000);
         }
     }
 
@@ -1823,8 +2046,8 @@
         cacheWarning.style.cssText = 'background: #fe0830; color: #fff; padding: 12px; margin-bottom: 15px; border-radius: 6px; font-size: 13px; text-align: center; font-weight: bold; border: 2px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.5); position: sticky; top: 0; z-index: 10001;';
         cacheWarning.innerHTML = `
             <i class="fa-solid fa-triangle-exclamation" style="font-size: 20px; margin-bottom: 5px; display: block;"></i>
-            CACHE DETECTED: Il browser sta usando la versione v${pluginVersion}.<br>
-            Sul server è presente la v${serverVersion}. Per favore, premi <b>CTRL + F5</b>.`;
+            CACHE DETECTED: The browser is using version v${pluginVersion}.<br>
+            The server version is v${serverVersion}. Please press <b>CTRL + F5</b>.`;
         const listBody = document.getElementById('updater-list-body');
         if (listBody) listBody.parentNode.insertBefore(cacheWarning, listBody);
     }
