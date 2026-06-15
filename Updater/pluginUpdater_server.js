@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.1.5c)
+ * Updater Plugin for FM-DX Webserver (v. 0.1.5d)
  * ************************************************
  */
 
@@ -663,7 +663,16 @@ endpointsRouter.get('/plugins/Updater/read-file', (req, res) => {
     }
 
     try {
-        const content = fs.readFileSync(filePath, 'utf8');
+        let content = fs.readFileSync(filePath, 'utf8');
+
+        // Se stiamo leggendo il log del server, mostriamo solo i messaggi dall'ultimo avvio
+        if (root === 'server' && fileName === 'serverlog.txt') {
+            const marker = '[INFO] Web server has started on address';
+            const lastIdx = content.lastIndexOf(marker);
+            if (lastIdx !== -1) {
+                content = content.substring(lastIdx);
+            }
+        }
         res.send(content);
     } catch (e) {
         res.status(500).send('Error reading file');

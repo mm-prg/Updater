@@ -9,7 +9,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.1.5c';
+    const pluginVersion = '0.1.5d';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -1291,8 +1291,10 @@
                     try {
                         const res = await fetch('/plugins/Updater/debug-cache?t=' + Date.now());
                         if (!res.ok) throw new Error();
-                        const cache = await res.json();
-                        openViewFileModal('Node_Cache.txt', cache.sort().join('\n'), [], [], 'Internal Memory', '', '', 'server', '', '', true);
+                        const data = await res.json();
+                        const cachePaths = (data.details || []).map(item => item.path).sort();
+                        const content = (data.serverStartTime ? `Server started: ${data.serverStartTime}\n\n` : '') + cachePaths.join('\n');
+                        openViewFileModal('Node_Cache.txt', content, [], [], 'Internal Memory', '', '', 'server', '', '', true);
                         dropdown.remove();
                     } catch (e) {
                         alert("Error fetching Node.js cache info.");
@@ -1318,15 +1320,6 @@
                 const localFilenames = new Set();
 
                 let currentExplorerPath = '';
-                if (fileName === 'serverlog.txt' && initialRoot === 'server') {
-                    const lines = originalContent.split('\n');
-                    let startIndex = -1;
-                    for (let i = lines.length - 1; i >= 0; i--) {
-                        if (lines[i].includes('[INFO] Web server has started on address')) { startIndex = i; break; }
-                    }
-                    if (startIndex !== -1) originalContent = lines.slice(startIndex).join('\n');
-                }
-
                 let currentRoot = initialRoot || 'plugins'; 
                 const getLocalPath = (p) => p.startsWith('plugins/') ? p.substring(8) : p;
 
@@ -1490,14 +1483,6 @@
                             } catch(e) {}
                         }
 
-                        if (targetFile === 'serverlog.txt' && currentRoot === 'server') {
-                            const lines = displayContent.split('\n');
-                            let startIndex = -1;
-                            for (let i = lines.length - 1; i >= 0; i--) {
-                                if (lines[i].includes('[INFO] Web server has started on address')) { startIndex = i; break; }
-                            }
-                            if (startIndex !== -1) displayContent = lines.slice(startIndex).join('\n');
-                        }
                         setEditorValue(displayContent);
                         originalContent = displayContent;
                         if (forceReadOnly) {
