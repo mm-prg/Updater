@@ -1533,6 +1533,10 @@
                     const btn = document.createElement('div');
                     btn.style.cssText = 'padding:10px; cursor:pointer; background:#eee; border-radius:4px; font-weight:bold; display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; color:#333; font-size:13px;';
                     btn.innerHTML = `<span><i class="fa-solid fa-folder-open" style="color:#ffcc00; margin-right:8px;"></i>${label}</span><i class="fa-solid fa-chevron-down"></i>`;
+                    
+                    if (root === 'plugins') btn.title = "Browse the main plugins/ directory of the server";
+                    else if (root === 'configs') btn.title = "Browse the plugins_configs/ directory where plugin settings are stored";
+
                     sidebar.appendChild(btn);
 
                     const container = document.createElement('div');
@@ -1650,6 +1654,7 @@
                         if (files.length > 0) {
                             const metaDiv = document.createElement('div');
                             metaDiv.style.cssText = 'margin-bottom:15px; background:#f0fff0; border:1px solid #c2e0c2; border-radius:4px; padding:10px; border-left: 3px solid #2d5a2d;';
+                            metaDiv.title = "Files physically present on disk within this plugin's dedicated folder";
                             metaDiv.innerHTML = `<div style="font-weight:bold; font-size:11px; color:#2d5a2d; margin-bottom:8px; text-transform:uppercase;">Local Plugin Files:</div>`;
                             const metaUl = document.createElement('ul');
                             metaUl.style.cssText = 'list-style:none; padding:0; margin:0; font-size:11px; display:flex; flex-direction:column; gap:6px; font-family:monospace;';
@@ -1677,6 +1682,7 @@
                             if (filtered.length > 0) {
                                 const cacheDiv = document.createElement('div');
                                 cacheDiv.style.cssText = 'margin-bottom:15px; background:#f3e5f5; border:1px solid #d1c4e9; border-radius:4px; padding:10px; border-left: 3px solid #673ab7;';
+                                cacheDiv.title = "Backend modules currently loaded in the Node.js RAM cache. If 'Out of Sync', disk changes are not yet active in memory.";
                                 cacheDiv.innerHTML = `<div style="font-weight:bold; font-size:11px; color:#512da8; margin-bottom:4px; text-transform:uppercase;">Node.js Cache Files:</div>`;
                                 if (serverStartTimeStr) {
                                     cacheDiv.innerHTML += `<div style="font-size:10px; color:#666; margin-bottom:8px; font-style:italic;">Server started: ${serverStartTimeStr}</div>`;
@@ -1706,6 +1712,7 @@
                 if (notDownloadedFiles && notDownloadedFiles.length > 0) {
                     const skipDiv = document.createElement('div');
                     skipDiv.style.cssText = 'margin-bottom:15px; background:#fff8e1; border:1px solid #ffe082; border-radius:4px; padding:10px; border-left: 3px solid #856404;';
+                    skipDiv.title = "Files detected in the GitHub repository that were not downloaded during the last update (skipped files)";
                     skipDiv.innerHTML = `<div style="font-weight:bold; font-size:11px; color:#856404; margin-bottom:8px; text-transform:uppercase;">SKIPPED (Not Downloaded):</div>`;
                     const skipUl = document.createElement('ul');
                     skipUl.style.cssText = 'list-style:none; padding:0; margin:0; font-size:11px; display:flex; flex-direction:column; gap:4px; font-family:monospace; color:#666;';
@@ -1723,6 +1730,7 @@
                 if (repoUrl) {
                     const repoDiv = document.createElement('div');
                     repoDiv.style.cssText = 'margin-bottom:15px; background:#eef9ff; border:1px solid #cceeff; border-radius:4px; padding:10px; border-left: 3px solid #3fa9f5;';
+                    repoDiv.title = "Link to the plugin's source code on GitHub";
                     repoDiv.innerHTML = `
                         <div style="font-weight:bold; font-size:11px; color:#0066cc; margin-bottom:8px; text-transform:uppercase;">Repository:</div>
                         <div style="font-size:11px; font-family:monospace; word-break:break-all;">
