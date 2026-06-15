@@ -9,7 +9,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.1.5e';
+    const pluginVersion = '0.1.5f';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -1193,6 +1193,7 @@
                 setTimeout(() => document.addEventListener('click', closeDropdown), 0);
                 dropdown.querySelector('#opt-save').onclick = async () => {
                     const newSettings = {
+                        ...currentSettings,
                         showInPluginPanel: dropdown.querySelector('#opt-show-panel').checked,
                         showInHeader: dropdown.querySelector('#opt-show-header').checked,
                         showInSetup: dropdown.querySelector('#opt-show-setup').checked,
@@ -1224,6 +1225,15 @@
                 const btn = event.currentTarget;
                 const rect = btn.getBoundingClientRect();
 
+                let currentSettings = {};
+                try {
+                    const res = await fetch('/plugins/Updater/settings?t=' + Date.now());
+                    if (res.ok) currentSettings = await res.json();
+                } catch(e) {}
+
+                const customButtons = currentSettings.customButtons || [];
+                while (customButtons.length < 4) customButtons.push({ label: `Custom ${customButtons.length + 1}`, cmd: "" });
+
                 const dropdown = document.createElement('div');
                 dropdown.id = 'updater-config-files-dropdown';
                 dropdown.style.cssText = `position:fixed; top:${rect.bottom + 5}px; left:${rect.left}px; background:#1a1a1a; border:1px solid #444; border-radius:4px; padding:12px; z-index:100002; width:260px; box-shadow:0 4px 20px rgba(0,0,0,0.8); color:#fff; font-size:13px;`;
@@ -1233,6 +1243,10 @@
                     <button id="opt-view-log" title="View server console log (serverlog.txt)" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;">View Server Log</button>
                     <button id="menu-cache-btn" title="View modules currently loaded in the Node.js memory" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;">View Node.js Cache</button>
                     <button id="menu-terminal-btn" title="Execute system commands" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;">Execute Terminal Commands</button>
+                    <button id="menu-custom-1-btn" title="Execute: ${customButtons[0].cmd || 'Not set'}" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;"><i class="fa-solid fa-terminal" style="font-size:10px; color:#ffaa00; margin-right:5px;"></i> ${customButtons[0].label}</button>
+                    <button id="menu-custom-2-btn" title="Execute: ${customButtons[1].cmd || 'Not set'}" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;"><i class="fa-solid fa-terminal" style="font-size:10px; color:#ffaa00; margin-right:5px;"></i> ${customButtons[1].label}</button>
+                    <button id="menu-custom-3-btn" title="Execute: ${customButtons[2].cmd || 'Not set'}" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;"><i class="fa-solid fa-terminal" style="font-size:10px; color:#ffaa00; margin-right:5px;"></i> ${customButtons[2].label}</button>
+                    <button id="menu-custom-4-btn" title="Execute: ${customButtons[3].cmd || 'Not set'}" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;"><i class="fa-solid fa-terminal" style="font-size:10px; color:#ffaa00; margin-right:5px;"></i> ${customButtons[3].label}</button>
 
                     <div style="margin:12px 0 8px 0; border-top:1px solid #333; padding-top:12px; font-weight:bold; color:#00ccff; font-size:11px; text-transform:uppercase;">Plugins data</div>
                     <button id="view-new-data-btn" title="Local plugins metadata" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;">plugins_data.json</button>
@@ -1285,6 +1299,22 @@
                 };
                 dropdown.querySelector('#menu-terminal-btn').onclick = () => {
                     openTerminalModal();
+                    dropdown.remove();
+                };
+                dropdown.querySelector('#menu-custom-1-btn').onclick = () => {
+                    openTerminalModal(customButtons[0].cmd);
+                    dropdown.remove();
+                };
+                dropdown.querySelector('#menu-custom-2-btn').onclick = () => {
+                    openTerminalModal(customButtons[1].cmd);
+                    dropdown.remove();
+                };
+                dropdown.querySelector('#menu-custom-3-btn').onclick = () => {
+                    openTerminalModal(customButtons[2].cmd);
+                    dropdown.remove();
+                };
+                dropdown.querySelector('#menu-custom-4-btn').onclick = () => {
+                    openTerminalModal(customButtons[3].cmd);
                     dropdown.remove();
                 };
                 dropdown.querySelector('#menu-cache-btn').onclick = async () => {
@@ -1830,17 +1860,34 @@
                 document.body.appendChild(overlay);
             }
 
-            function openTerminalModal() {
+            async function openTerminalModal(initialCommand = '') {
                 const overlay = document.createElement('div');
                 overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:100000; display:flex; align-items:center; justify-content:center; color:#000;';
                 
+                let currentSettings = {};
+                try {
+                    const res = await fetch('/plugins/Updater/settings?t=' + Date.now());
+                    if (res.ok) currentSettings = await res.json();
+                } catch(e) {}
+
+                const customButtons = currentSettings.customButtons || [];
+                while (customButtons.length < 4) customButtons.push({ label: `Custom ${customButtons.length + 1}`, cmd: "" });
+
+                let commandHistory = [];
+                let historyIndex = -1;
+                let currentBuffer = '';
+
                 const modal = document.createElement('div');
                 modal.style.cssText = 'background:#1a1a1a; padding:15px; border-radius:8px; width:95%; max-width:1200px; height:85vh; box-shadow:0 10px 25px rgba(0,0,0,0.5); display:flex; flex-direction:column; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;';
                 modal.innerHTML = `
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #333; padding-bottom:8px;">
                         <h3 style="margin:0; color:#fff; font-size:16px;">Server Terminal <span id="terminal-os-label" style="font-size:11px; color:#ffaa00;">(Detecting OS...)</span></h3>
                         <div style="display:flex; gap: 8px;">
-                            <button id="terminal-clear-btn" class="updater-btn" style="background:#333; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:80px; flex-shrink:0; text-align:center;">Clear Screen</button>
+                            <button id="terminal-custom-1" class="updater-btn" style="background:#444; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:90px; flex-shrink:0; text-align:center;" title="Double click to edit">${customButtons[0].label}</button>
+                            <button id="terminal-custom-2" class="updater-btn" style="background:#444; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:90px; flex-shrink:0; text-align:center;" title="Double click to edit">${customButtons[1].label}</button>
+                            <button id="terminal-custom-3" class="updater-btn" style="background:#444; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:90px; flex-shrink:0; text-align:center;" title="Double click to edit">${customButtons[2].label}</button>
+                            <button id="terminal-custom-4" class="updater-btn" style="background:#444; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:90px; flex-shrink:0; text-align:center;" title="Double click to edit">${customButtons[3].label}</button>
+                            <button id="terminal-clear-btn" class="updater-btn" style="background:#333; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:70px; flex-shrink:0; text-align:center;">Clear Screen</button>
                             <button id="terminal-close-btn" class="updater-btn" style="background:#fe0830; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:60px; flex-shrink:0; text-align:center;">Close</button>
                         </div>
                     </div>
@@ -1881,8 +1928,8 @@
 
                 let lastAttemptedCommand = '';
 
-                const executeCommand = async (sudoPwd = null) => {
-                    const command = sudoPwd !== null ? lastAttemptedCommand : terminalInput.value.trim();
+                const executeCommand = async (cmdOverride = null, sudoPwd = null) => {
+                    const command = sudoPwd !== null ? lastAttemptedCommand : (cmdOverride !== null ? cmdOverride : terminalInput.value.trim());
                     if (!command && sudoPwd === null) return;
                     
                     if (command.toLowerCase() === 'cls' || command.toLowerCase() === 'clear') {
@@ -1911,7 +1958,7 @@
 
                         if (data.needPassword) {
                             const pwd = prompt("Sudo password required for this command:");
-                            if (pwd !== null) return executeCommand(pwd);
+                            if (pwd !== null) return executeCommand(null, pwd);
                             appendOutput("Command cancelled: password not provided.", "#ffaa00");
                         }
 
@@ -1957,11 +2004,43 @@
                         }
                             
                         terminalHistory.textContent = `Welcome to the server terminal [${isWin ? 'Windows' : 'Linux/Unix'}].` + 
-                            (isWin ? " Type 'help' for info." : " (Help command is not available on Linux)");
+                            (isWin ? " Type 'help' for info." : " Type a bash command. Use 'sudo' for admin commands.") + '\n';
                     }
                 }).catch(() => updatePrompt('server'));
 
-                terminalInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') executeCommand(); });
+                terminalInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        const cmd = terminalInput.value.trim();
+                        if (cmd && (commandHistory.length === 0 || commandHistory[commandHistory.length - 1] !== cmd)) {
+                            commandHistory.push(cmd);
+                        }
+                        historyIndex = -1;
+                        currentBuffer = '';
+                        executeCommand();
+                    } else if (e.key === 'ArrowUp') {
+                        if (commandHistory.length > 0) {
+                            e.preventDefault();
+                            if (historyIndex === -1) {
+                                currentBuffer = terminalInput.value;
+                                historyIndex = commandHistory.length - 1;
+                            } else if (historyIndex > 0) {
+                                historyIndex--;
+                            }
+                            terminalInput.value = commandHistory[historyIndex];
+                        }
+                    } else if (e.key === 'ArrowDown') {
+                        if (historyIndex !== -1) {
+                            e.preventDefault();
+                            historyIndex++;
+                            if (historyIndex >= commandHistory.length) {
+                                historyIndex = -1;
+                                terminalInput.value = currentBuffer;
+                            } else {
+                                terminalInput.value = commandHistory[historyIndex];
+                            }
+                        }
+                    }
+                });
                 terminalContainer.onclick = () => terminalInput.focus(); // Focus input on terminal click
 
                 // Event listener for the new "Clear Screen" button
@@ -1971,6 +2050,49 @@
                 };
                 terminalCloseBtn.onclick = () => overlay.remove();
             }
+                const setupCustomBtn = (index) => {
+                    const btn = modal.querySelector(`#terminal-custom-${index + 1}`);
+                    let clickTimer = null;
+                    btn.onclick = () => {
+                        if (clickTimer) return;
+                        clickTimer = setTimeout(() => {
+                            if (customButtons[index].cmd) executeCommand(customButtons[index].cmd);
+                            else alert("Command not set. Double click to edit.");
+                            clickTimer = null;
+                        }, 250);
+                    };
+                    btn.ondblclick = async (e) => {
+                        clearTimeout(clickTimer);
+                        clickTimer = null;
+                        e.preventDefault();
+                        const newLabel = prompt("Enter button label:", customButtons[index].label);
+                        if (newLabel === null) return;
+                        const newCmd = prompt("Enter command to execute:", customButtons[index].cmd);
+                        if (newCmd === null) return;
+                        customButtons[index].label = newLabel || `Custom ${index + 1}`;
+                        customButtons[index].cmd = newCmd;
+
+                        currentSettings.customButtons = customButtons;
+                        try {
+                            const res = await fetch('/plugins/Updater/settings', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(currentSettings)
+                            });
+                            if (res.ok) {
+                                btn.textContent = customButtons[index].label;
+                                btn.title = `Execute: ${newCmd}`;
+                            }
+                        } catch (err) {}
+                    };
+                };
+                setupCustomBtn(0);
+                setupCustomBtn(1);
+                setupCustomBtn(2);
+                setupCustomBtn(3);
+                if (initialCommand) setTimeout(() => executeCommand(initialCommand), 150);
+            }
+
 
         function renderPluginRows() {
             const tbody = document.getElementById('updater-list-body');
