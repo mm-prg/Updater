@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.1.5d)
+ * Updater Plugin for FM-DX Webserver (v. 0.1.5e)
  * ************************************************
  */
 
@@ -10,6 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { exec } = require('child_process');
 const express = require('express');
 const https = require('https');
@@ -743,11 +744,13 @@ endpointsRouter.post('/plugins/Updater/terminal-command', express.json({ limit: 
     // Example: if (!req.user || !req.user.isAdmin) { return res.status(403).json({ ok: false, error: 'Unauthorized' }); }
 
     const { command, sudoPassword: tempPassword } = req.body;
+    const platform = os.platform(); // Rilevazione tramite modulo os
+
     if (!command) {
-        return res.json({ ok: true, stdout: '', stderr: '', cwd: terminalCwd });
+        return res.json({ ok: true, stdout: '', stderr: '', cwd: terminalCwd, platform });
     }
 
-    const isWin = process.platform === "win32";
+    const isWin = platform === "win32";
     const pwdCmd = isWin ? "cd" : "pwd";
     const shellSep = isWin ? "&" : "&&";
     
@@ -787,7 +790,7 @@ endpointsRouter.post('/plugins/Updater/terminal-command', express.json({ limit: 
             return res.json({ ok: false, error: error.message, stdout: output, stderr, cwd: terminalCwd });
         }
 
-        res.json({ ok: true, stdout: output, stderr, cwd: terminalCwd });
+        res.json({ ok: true, stdout: output, stderr, cwd: terminalCwd, platform });
     });
 });
 
@@ -840,27 +843,21 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                             if (processedLogicalNames.has(pluginNameFromConfig)) continue;
 
                             const localDescriptorName = path.basename(file); // e.g., FavStations.js
-                            const config = {
-                                name: pluginNameFromConfig,
-                                logicalName: pluginNameFromConfig,
-                                // Determine localDir from config.frontEndPath for cache check
-                                localDir: (feMatch && feMatch[1].includes('/')) ? feMatch[1].split('/')[0] : ""
-                            };
-
-                            // Get all local files for this plugin (absolute paths)
-                            const associatedLocalFiles = getPluginLocalFilesAbsolute(localDescriptorName, config.localDir);
-                            // Check cache status for these files
-                            const cacheStatus = getCacheDetailsForFiles(associatedLocalFiles);
-                            const hasStaleFiles = cacheStatus.some(item => item.isStale);
-
-                            // Re-create config object with full details
                             const fullConfig = {
                                 name: pluginNameFromConfig,
                                 logicalName: pluginNameFromConfig,
                                 version: verMatch ? verMatch[1] : '0.0.0',
                                 author: authorMatch ? authorMatch[1] : 'Unknown',
-                                frontEndPath: feMatch ? feMatch[1] : ''
+                                frontEndPath: feMatch ? feMatch[1] : '',
+                                // Determine localDir from config.frontEndPath for cache check
+                                localDir: (feMatch && feMatch[1].includes('/')) ? feMatch[1].split('/')[0] : ""
                             };
+
+                            // Get all local files for this plugin (absolute paths)
+                            const associatedLocalFiles = getPluginLocalFilesAbsolute(localDescriptorName, fullConfig.localDir);
+                            // Check cache status for these files
+                            const cacheStatus = getCacheDetailsForFiles(associatedLocalFiles);
+                            const hasStaleFiles = cacheStatus.some(item => item.isStale);
 
                             // Get dynamic override for this plugin name
                             const dynOverride = dynamicData[pluginNameFromConfig] || {};
@@ -883,7 +880,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                             };
 
                             // Store local data for subsequent branch scanning
-                            localPluginsInfo[pluginNameFromConfig] = { config, localDescriptorName, filePath };
+                            localPluginsInfo[pluginNameFromConfig] = { config: fullConfig, localDescriptorName, filePath };
                             processedLogicalNames.add(pluginNameFromConfig);
 
                             // Apply other overrides only if they are specific to main or generic

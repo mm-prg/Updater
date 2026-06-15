@@ -9,7 +9,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.1.5d';
+    const pluginVersion = '0.1.5e';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -1838,8 +1838,11 @@
                 modal.style.cssText = 'background:#1a1a1a; padding:15px; border-radius:8px; width:95%; max-width:1200px; height:85vh; box-shadow:0 10px 25px rgba(0,0,0,0.5); display:flex; flex-direction:column; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;';
                 modal.innerHTML = `
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #333; padding-bottom:8px;">
-                        <h3 style="margin:0; color:#fff; font-size:16px;">Server Terminal <span style="font-size:11px; color:#ffaa00;">(node.js 'exec' commands)</span></h3>
-                        <button id="terminal-close-btn" class="updater-btn" style="background:#fe0830; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:60px; flex-shrink:0; text-align:center;">Close</button>
+                        <h3 style="margin:0; color:#fff; font-size:16px;">Server Terminal <span id="terminal-os-label" style="font-size:11px; color:#ffaa00;">(Detecting OS...)</span></h3>
+                        <div style="display:flex; gap: 8px;">
+                            <button id="terminal-clear-btn" class="updater-btn" style="background:#333; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:80px; flex-shrink:0; text-align:center;">Clear Screen</button>
+                            <button id="terminal-close-btn" class="updater-btn" style="background:#fe0830; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:60px; flex-shrink:0; text-align:center;">Close</button>
+                        </div>
                     </div>
 
                     <div id="terminal-container" style="flex-grow:1; background:#000; border:1px solid #333; border-radius:4px; overflow-y:auto; padding:15px; font-family:monospace; font-size:14px; line-height: 1.4; color:#0f0; cursor:text;">
@@ -1849,9 +1852,8 @@
                             <input type="text" id="terminal-input" autocomplete="off" spellcheck="false" style="flex-grow:1; background:transparent; color:#fff; border:none; outline:none; padding:0; margin:0; font-family:inherit; font-size:inherit; line-height:inherit;">
                         </div>
                     </div>
-                    <div style="display:flex; justify-content:space-between; align-items:center; font-size: 10px; color: #555; margin-top:8px;">
-                        <span>CMD.exe (Windows) - Use <code>&&</code> to chain. Interactive programs like 'cmd' or 'powershell' are not supported.</span>
-                        <button id="terminal-clear-btn" style="background:transparent; border:none; color:#777; cursor:pointer; text-decoration:underline; font-size:10px;">Clear Screen</button>
+                    <div style="display:flex; justify-content:flex-end; align-items:center; font-size: 12px; color: #555; margin-top:8px;">
+                        <span id="terminal-os-hint">Detecting environment...</span>
                     </div>
                 `;
 
@@ -1861,7 +1863,6 @@
                 const terminalContainer = modal.querySelector('#terminal-container');
                 const terminalHistory = modal.querySelector('#terminal-history');
                 const terminalInput = modal.querySelector('#terminal-input');
-                const terminalClearBtn = modal.querySelector('#terminal-clear-btn');
                 const terminalCloseBtn = modal.querySelector('#terminal-close-btn');
                 const terminalPromptPath = modal.querySelector('#terminal-prompt-path');
 
@@ -1938,11 +1939,36 @@
                     body: JSON.stringify({ command: '' })
                 }).then(res => res.json()).then(data => {
                     if (data.cwd) updatePrompt(data.cwd);
+                    if (data.platform) {
+                        const osLabel = modal.querySelector('#terminal-os-label');
+                        const osHint = modal.querySelector('#terminal-os-hint');
+                        const isWin = data.platform === 'win32';
+                        
+                        if (osLabel) {
+                            osLabel.innerHTML = isWin ? 
+                                '<i class="fa-brands fa-windows"></i> Windows (CMD.exe)' : 
+                                '<i class="fa-brands fa-linux"></i> Linux/Unix (Bash)';
+                        }
+                        
+                        if (osHint) {
+                            osHint.innerHTML = isWin ?
+                                'CMD.exe (Windows) - Use <code>&&</code> to chain. Type <code>help</code> for info.' :
+                                'Bash (Linux/Unix) - Use <code>&&</code> to chain. sudo is supported if password is set.';
+                        }
+                            
+                        terminalHistory.textContent = `Welcome to the server terminal [${isWin ? 'Windows' : 'Linux/Unix'}].` + 
+                            (isWin ? " Type 'help' for info." : " (Help command is not available on Linux)");
+                    }
                 }).catch(() => updatePrompt('server'));
 
                 terminalInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') executeCommand(); });
-                terminalContainer.onclick = () => terminalInput.focus();
-                terminalClearBtn.onclick = () => { terminalHistory.innerHTML = ''; appendOutput('Terminal cleared.', '#555'); };
+                terminalContainer.onclick = () => terminalInput.focus(); // Focus input on terminal click
+
+                // Event listener for the new "Clear Screen" button
+                modal.querySelector('#terminal-clear-btn').onclick = () => {
+                    terminalHistory.innerHTML = '';
+                    appendOutput('Terminal cleared.', '#555');
+                };
                 terminalCloseBtn.onclick = () => overlay.remove();
             }
 
