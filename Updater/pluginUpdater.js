@@ -9,7 +9,7 @@
 "use strict";
 
 (async () => {
-    const pluginVersion = '0.1.5f';
+    const pluginVersion = '0.1.5g';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
