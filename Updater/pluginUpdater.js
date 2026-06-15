@@ -8,7 +8,7 @@
 
 "use strict";
 
-(() => {
+(async () => {
     const pluginVersion = '0.1.5f';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
@@ -2228,19 +2228,6 @@
             currentPlugins = data.plugins || data;
             if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
 
-            /* Temporarily disabled version cache check
-            // Version mismatch verification (Cache Detection)
-            const selfInfo = currentPlugins.find(p => p.name === 'Updater');
-            if (selfInfo && selfInfo.version !== pluginVersion) {
-                console.warn(`[Updater] Cache Mismatch! Browser: ${pluginVersion}, Server: ${selfInfo.version}`);
-                showCacheWarning(selfInfo.version);
-            }
-
-            // Remove the warning if the version becomes correct again after a refresh
-            const oldWarning = document.getElementById('updater-cache-warning');
-            if (oldWarning && selfInfo && selfInfo.version === pluginVersion) oldWarning.remove();
-            */
-
             const status = document.getElementById('updater-status');
             if (currentPlugins.length === 0) {
                 status.textContent = "No valid plugin descriptors found.";
@@ -2276,5 +2263,5 @@
         if (listBody) listBody.parentNode.insertBefore(cacheWarning, listBody);
     }
 
-    initUpdater();
+    await initUpdater();
 })();
