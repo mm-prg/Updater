@@ -94,20 +94,23 @@
         let currentPlugins = [];
 
         // Retrieve settings from the server (default advancedMode: true)
-        let settings = { showInPluginPanel: true, showInHeader: true, showInSetup: true, advancedMode: true };
+        let settings = { showInPluginPanel: true, showInHeader: true, showInSetup: true, advancedMode: true, customButtons: [] };
         try {
             const settingsRes = await fetch('/plugins/Updater/settings?t=' + Date.now());
             if (settingsRes.ok) {
                 const data = await settingsRes.json();
-                // Load parameters with fallback for migration from previous versions
-                settings = {
-                    showInPluginPanel: data.showInPluginPanel ?? (data.visibility === 'both' || data.visibility === 'main' || true),
-                    showInHeader: data.showInHeader ?? (data.visibility === 'both' || data.visibility === 'main' || true),
-                    showInSetup: data.showInSetup ?? (data.visibility === 'both' || data.visibility === 'setup' || true),
-                    advancedMode: data.advancedMode ?? true
-                };
+                Object.assign(settings, data);
+                // Migration fallback for legacy visibility settings
+                settings.showInPluginPanel = data.showInPluginPanel ?? (data.visibility === 'both' || data.visibility === 'main' || true);
+                settings.showInHeader = data.showInHeader ?? (data.visibility === 'both' || data.visibility === 'main' || true);
+                settings.showInSetup = data.showInSetup ?? (data.visibility === 'both' || data.visibility === 'setup' || true);
+                settings.advancedMode = data.advancedMode ?? true;
             }
         } catch (e) {}
+
+        // Ensure customButtons are initialized with defaults if missing
+        while (settings.customButtons.length < 2) 
+            settings.customButtons.push({ label: `Custom ${settings.customButtons.length + 1}`, cmd: "" });
 
         // Determine admin status by checking the page text (as SysInfo does)
         const bodyText = document.body.textContent || document.body.innerText;
@@ -1155,29 +1158,21 @@
                 event.stopPropagation();
                 const btn = event.currentTarget;
                 const rect = btn.getBoundingClientRect();
-                let currentSettings = { showInPluginPanel: true, showInHeader: true, showInSetup: true, advancedMode: false, sudoPassword: '' };
-                try {
-                    const res = await fetch('/plugins/Updater/settings');
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data.showInPluginPanel !== undefined) currentSettings = data;
-                    }
-                } catch (e) {}
                 const dropdown = document.createElement('div');
                 dropdown.id = 'updater-options-dropdown';
                 dropdown.style.cssText = `position:fixed; top:${rect.bottom + 5}px; left:${rect.left}px; background:#1a1a1a; border:1px solid #444; border-radius:4px; padding:12px; z-index:100002; width:260px; box-shadow:0 4px 20px rgba(0,0,0,0.8); color:#fff; font-size:13px;`;
                 dropdown.innerHTML = `
                     <div style="margin-bottom:12px; border-bottom:1px solid #333; padding-bottom:8px; font-weight:bold; color:#00ff00; font-size:11px; text-transform:uppercase;">Visibility</div>
                     <div style="margin-bottom:15px;">
-                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="opt-show-panel" ${currentSettings.showInPluginPanel ? 'checked' : ''}> Plugin Panel</label>
-                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="opt-show-header" ${currentSettings.showInHeader ? 'checked' : ''}> Header Button</label>
-                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="opt-show-setup" ${currentSettings.showInSetup ? 'checked' : ''}> Setup Table</label>
-                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer; color:#ffaa00;"><input type="checkbox" id="opt-advanced-mode" ${currentSettings.advancedMode ? 'checked' : ''}> Advanced Mode (Explore Files)</label>
+                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="opt-show-panel" ${settings.showInPluginPanel ? 'checked' : ''}> Plugin Panel</label>
+                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="opt-show-header" ${settings.showInHeader ? 'checked' : ''}> Header Button</label>
+                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="opt-show-setup" ${settings.showInSetup ? 'checked' : ''}> Setup Table</label>
+                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer; color:#ffaa00;"><input type="checkbox" id="opt-advanced-mode" ${settings.advancedMode ? 'checked' : ''}> Advanced Mode (Explore Files)</label>
                     </div>
                     <div style="margin-bottom:12px; border-bottom:1px solid #333; padding-bottom:8px; font-weight:bold; color:#3fa9f5; font-size:11px; text-transform:uppercase;">Linux Terminal</div>
                     <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:11px; margin-bottom:5px; color:#aaa;">Sudo Password (optional):</label>
-                        <input type="password" id="opt-sudo-pass" value="${currentSettings.sudoPassword || ''}" style="width:100%; padding:6px; background:#333; border:1px solid #444; color:#fff; border-radius:4px; font-size:12px;">
+                        <input type="password" id="opt-sudo-pass" value="${settings.sudoPassword || ''}" style="width:100%; padding:6px; background:#333; border:1px solid #444; color:#fff; border-radius:4px; font-size:12px;">
                     </div>
                     <button id="opt-save" style="width:100%; padding:6px; border:none; background:#fe0830; color:#fff; cursor:pointer; border-radius:4px; font-size:11px; font-weight:bold; margin-bottom:15px;">SAVE SETTINGS</button>
                 `;
@@ -1193,7 +1188,7 @@
                 setTimeout(() => document.addEventListener('click', closeDropdown), 0);
                 dropdown.querySelector('#opt-save').onclick = async () => {
                     const newSettings = {
-                        ...currentSettings,
+                        ...settings,
                         showInPluginPanel: dropdown.querySelector('#opt-show-panel').checked,
                         showInHeader: dropdown.querySelector('#opt-show-header').checked,
                         showInSetup: dropdown.querySelector('#opt-show-setup').checked,
@@ -1225,14 +1220,7 @@
                 const btn = event.currentTarget;
                 const rect = btn.getBoundingClientRect();
 
-                let currentSettings = {};
-                try {
-                    const res = await fetch('/plugins/Updater/settings?t=' + Date.now());
-                    if (res.ok) currentSettings = await res.json();
-                } catch(e) {}
-
-                const customButtons = currentSettings.customButtons || [];
-                while (customButtons.length < 4) customButtons.push({ label: `Custom ${customButtons.length + 1}`, cmd: "" });
+                const customButtons = settings.customButtons;
 
                 const dropdown = document.createElement('div');
                 dropdown.id = 'updater-config-files-dropdown';
@@ -1245,8 +1233,6 @@
                     <button id="menu-terminal-btn" title="Execute system commands" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;">Execute Terminal Commands</button>
                     <button id="menu-custom-1-btn" title="Execute: ${customButtons[0].cmd || 'Not set'}" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;"><i class="fa-solid fa-terminal" style="font-size:10px; color:#ffaa00; margin-right:5px;"></i> ${customButtons[0].label}</button>
                     <button id="menu-custom-2-btn" title="Execute: ${customButtons[1].cmd || 'Not set'}" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;"><i class="fa-solid fa-terminal" style="font-size:10px; color:#ffaa00; margin-right:5px;"></i> ${customButtons[1].label}</button>
-                    <button id="menu-custom-3-btn" title="Execute: ${customButtons[2].cmd || 'Not set'}" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;"><i class="fa-solid fa-terminal" style="font-size:10px; color:#ffaa00; margin-right:5px;"></i> ${customButtons[2].label}</button>
-                    <button id="menu-custom-4-btn" title="Execute: ${customButtons[3].cmd || 'Not set'}" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;"><i class="fa-solid fa-terminal" style="font-size:10px; color:#ffaa00; margin-right:5px;"></i> ${customButtons[3].label}</button>
 
                     <div style="margin:12px 0 8px 0; border-top:1px solid #333; padding-top:12px; font-weight:bold; color:#00ccff; font-size:11px; text-transform:uppercase;">Plugins data</div>
                     <button id="view-new-data-btn" title="Local plugins metadata" style="background:#333; color:#fff; border:1px solid #444; border-radius:4px; padding:6px; cursor:pointer; font-size:11px; width:100%; margin-bottom:5px; text-align:left;">plugins_data.json</button>
@@ -1307,14 +1293,6 @@
                 };
                 dropdown.querySelector('#menu-custom-2-btn').onclick = () => {
                     openTerminalModal(customButtons[1].cmd);
-                    dropdown.remove();
-                };
-                dropdown.querySelector('#menu-custom-3-btn').onclick = () => {
-                    openTerminalModal(customButtons[2].cmd);
-                    dropdown.remove();
-                };
-                dropdown.querySelector('#menu-custom-4-btn').onclick = () => {
-                    openTerminalModal(customButtons[3].cmd);
                     dropdown.remove();
                 };
                 dropdown.querySelector('#menu-cache-btn').onclick = async () => {
@@ -1872,14 +1850,7 @@
                 const overlay = document.createElement('div');
                 overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:100000; display:flex; align-items:center; justify-content:center; color:#000;';
                 
-                let currentSettings = {};
-                try {
-                    const res = await fetch('/plugins/Updater/settings?t=' + Date.now());
-                    if (res.ok) currentSettings = await res.json();
-                } catch(e) {}
-
-                const customButtons = currentSettings.customButtons || [];
-                while (customButtons.length < 4) customButtons.push({ label: `Custom ${customButtons.length + 1}`, cmd: "" });
+                const customButtons = settings.customButtons;
 
                 let commandHistory = [];
                 let historyIndex = -1;
@@ -1893,8 +1864,6 @@
                         <div style="display:flex; gap: 8px;">
                             <button id="terminal-custom-1" class="updater-btn" style="background:#444; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:90px; flex-shrink:0; text-align:center;" title="Double click to edit">${customButtons[0].label}</button>
                             <button id="terminal-custom-2" class="updater-btn" style="background:#444; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:90px; flex-shrink:0; text-align:center;" title="Double click to edit">${customButtons[1].label}</button>
-                            <button id="terminal-custom-3" class="updater-btn" style="background:#444; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:90px; flex-shrink:0; text-align:center;" title="Double click to edit">${customButtons[2].label}</button>
-                            <button id="terminal-custom-4" class="updater-btn" style="background:#444; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:90px; flex-shrink:0; text-align:center;" title="Double click to edit">${customButtons[3].label}</button>
                             <button id="terminal-clear-btn" class="updater-btn" style="background:#333; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:70px; flex-shrink:0; text-align:center;">Clear Screen</button>
                             <button id="terminal-close-btn" class="updater-btn" style="background:#fe0830; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:60px; flex-shrink:0; text-align:center;">Close</button>
                         </div>
@@ -2057,7 +2026,6 @@
                     appendOutput('Terminal cleared.', '#555');
                 };
                 terminalCloseBtn.onclick = () => overlay.remove();
-            }
                 const setupCustomBtn = (index) => {
                     const btn = modal.querySelector(`#terminal-custom-${index + 1}`);
                     let clickTimer = null;
@@ -2073,31 +2041,51 @@
                         clearTimeout(clickTimer);
                         clickTimer = null;
                         e.preventDefault();
-                        const newLabel = prompt("Enter button label:", customButtons[index].label);
-                        if (newLabel === null) return;
-                        const newCmd = prompt("Enter command to execute:", customButtons[index].cmd);
-                        if (newCmd === null) return;
-                        customButtons[index].label = newLabel || `Custom ${index + 1}`;
-                        customButtons[index].cmd = newCmd;
 
-                        currentSettings.customButtons = customButtons;
-                        try {
-                            const res = await fetch('/plugins/Updater/settings', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(currentSettings)
-                            });
-                            if (res.ok) {
+                        const editOverlay = document.createElement('div');
+                        editOverlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:110000; display:flex; align-items:center; justify-content:center; color:#000;';
+                        const editModal = document.createElement('div');
+                        editModal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:350px; box-shadow:0 10px 25px rgba(0,0,0,0.5); font-family:sans-serif;';
+                        editModal.innerHTML = `
+                            <h3 style="margin-top:0; font-size:14px; border-bottom:1px solid #ccc; padding-bottom:8px;">Edit Button ${index + 1}</h3>
+                            <div style="margin-bottom:12px;">
+                                <label style="display:block; font-size:11px; font-weight:bold; margin-bottom:4px;">Label</label>
+                                <input type="text" id="edit-btn-label" value="${customButtons[index].label}" style="width:100%; padding:6px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;">
+                            </div>
+                            <div style="margin-bottom:15px;">
+                                <label style="display:block; font-size:11px; font-weight:bold; margin-bottom:4px;">Command</label>
+                                <input type="text" id="edit-btn-cmd" value="${customButtons[index].cmd}" style="width:100%; padding:6px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;">
+                            </div>
+                            <div style="display:flex; justify-content:flex-end; gap:8px;">
+                                <button id="edit-btn-cancel" style="padding:6px 12px; border:none; background:#eee; cursor:pointer; border-radius:4px; font-size:11px;">Cancel</button>
+                                <button id="edit-btn-save" style="padding:6px 12px; border:none; background:#3fa9f5; color:#fff; cursor:pointer; border-radius:4px; font-weight:bold; font-size:11px;">Save</button>
+                            </div>
+                        `;
+                        editOverlay.appendChild(editModal);
+                        document.body.appendChild(editOverlay);
+
+                        editModal.querySelector('#edit-btn-cancel').onclick = () => editOverlay.remove();
+                        editModal.querySelector('#edit-btn-save').onclick = async () => {
+                            const newLabel = editModal.querySelector('#edit-btn-label').value.trim();
+                            const newCmd = editModal.querySelector('#edit-btn-cmd').value.trim();
+                            customButtons[index].label = newLabel || `Custom ${index + 1}`;
+                            customButtons[index].cmd = newCmd;
+                            
+                            try {
+                                await fetch('/plugins/Updater/settings', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(settings)
+                                });
                                 btn.textContent = customButtons[index].label;
-                                btn.title = `Execute: ${newCmd}`;
-                            }
-                        } catch (err) {}
+                                btn.title = `Execute: ${customButtons[index].cmd || 'Not set'}`;
+                                editOverlay.remove();
+                            } catch (err) { alert("Error saving settings."); }
+                        };
                     };
                 };
                 setupCustomBtn(0);
                 setupCustomBtn(1);
-                setupCustomBtn(2);
-                setupCustomBtn(3);
                 if (initialCommand) setTimeout(() => executeCommand(initialCommand), 150);
             }
 
