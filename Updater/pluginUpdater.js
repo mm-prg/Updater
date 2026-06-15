@@ -9,7 +9,7 @@
 "use strict";
 
 (async () => {
-    const pluginVersion = '0.1.5g';
+    const pluginVersion = '0.2.0';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -1862,8 +1862,8 @@
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #333; padding-bottom:8px;">
                         <h3 style="margin:0; color:#fff; font-size:16px;">Server Terminal <span id="terminal-os-label" style="font-size:11px; color:#ffaa00;">(Detecting OS...)</span></h3>
                         <div style="display:flex; gap: 8px;">
-                            <button id="terminal-custom-1" class="updater-btn" style="background:#444; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:90px; flex-shrink:0; text-align:center;" title="Double click to edit">${customButtons[0].label}</button>
-                            <button id="terminal-custom-2" class="updater-btn" style="background:#444; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:90px; flex-shrink:0; text-align:center;" title="Double click to edit">${customButtons[1].label}</button>
+                            <button id="terminal-custom-1" class="updater-btn" style="background:#444; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:90px; flex-shrink:0; text-align:center;" title="Right click to edit">${customButtons[0].label}</button>
+                            <button id="terminal-custom-2" class="updater-btn" style="background:#444; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:90px; flex-shrink:0; text-align:center;" title="Right click to edit">${customButtons[1].label}</button>
                             <button id="terminal-clear-btn" class="updater-btn" style="background:#333; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:70px; flex-shrink:0; text-align:center;">Clear Screen</button>
                             <button id="terminal-close-btn" class="updater-btn" style="background:#fe0830; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:60px; flex-shrink:0; text-align:center;">Close</button>
                         </div>
@@ -2028,20 +2028,12 @@
                 terminalCloseBtn.onclick = () => overlay.remove();
                 const setupCustomBtn = (index) => {
                     const btn = modal.querySelector(`#terminal-custom-${index + 1}`);
-                    let clickTimer = null;
                     btn.onclick = () => {
-                        if (clickTimer) return;
-                        clickTimer = setTimeout(() => {
-                            if (customButtons[index].cmd) executeCommand(customButtons[index].cmd);
-                            else alert("Command not set. Double click to edit.");
-                            clickTimer = null;
-                        }, 250);
+                        if (customButtons[index].cmd) executeCommand(customButtons[index].cmd);
+                        else alert("Command not set. Right click to edit.");
                     };
-                    btn.ondblclick = async (e) => {
-                        clearTimeout(clickTimer);
-                        clickTimer = null;
+                    btn.oncontextmenu = (e) => {
                         e.preventDefault();
-
                         const editOverlay = document.createElement('div');
                         editOverlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:110000; display:flex; align-items:center; justify-content:center; color:#000;';
                         const editModal = document.createElement('div');
@@ -2078,7 +2070,7 @@
                                     body: JSON.stringify(settings)
                                 });
                                 btn.textContent = customButtons[index].label;
-                                btn.title = `Execute: ${customButtons[index].cmd || 'Not set'}`;
+                                btn.title = customButtons[index].cmd ? `Execute: ${customButtons[index].cmd}` : "Right click to edit";
                                 editOverlay.remove();
                             } catch (err) { alert("Error saving settings."); }
                         };
