@@ -9,7 +9,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.1.5b';
+    const pluginVersion = '0.1.5c';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -1557,7 +1557,8 @@
                             const li = document.createElement('li');
                             li.style.cssText = 'padding:6px; cursor:pointer; border-bottom:1px solid #f9f9f9; display:flex; align-items:center; gap:8px;';
                             const icon = item.isDir ? 'fa-folder' : 'fa-file-code';
-                            li.innerHTML = `<i class="fa-solid ${icon}" style="color:${item.isDir ? '#ffcc00' : '#888'};"></i> ${item.name}`;
+                            const timeStr = item.mtime ? new Date(item.mtime).toLocaleString() : '';
+                            li.innerHTML = `<i class="fa-solid ${icon}" style="color:${item.isDir ? '#ffcc00' : '#888'};"></i> ${item.name} ${timeStr ? `<span style="color:#888; font-size:9px; margin-left:auto;">(${timeStr})</span>` : ''}`;
                             li.onclick = () => item.isDir ? loadDir(path ? `${path}/${item.name}` : item.name, container, root) : loadFileContent(path ? `${path}/${item.name}` : item.name, root);
                             ul.appendChild(li);
                         });
@@ -1652,19 +1653,25 @@
                         // Scan Node.js Cache for matching files
                         const cacheRes = await fetch('/plugins/Updater/debug-cache?t=' + Date.now());
                         if (cacheRes.ok) {
-                            const cacheInfo = await cacheRes.json();
+                            const data = await cacheRes.json();
+                            const cacheInfo = data.details || [];
+                            const serverStartTimeStr = data.serverStartTime || '';
+
                             const filtered = cacheInfo.filter(item => localFilenames.has(item.path.split(/[\\/]/).pop()));
                             
                             if (filtered.length > 0) {
                                 const cacheDiv = document.createElement('div');
                                 cacheDiv.style.cssText = 'margin-bottom:15px; background:#f3e5f5; border:1px solid #d1c4e9; border-radius:4px; padding:10px; border-left: 3px solid #673ab7;';
-                                cacheDiv.innerHTML = `<div style="font-weight:bold; font-size:11px; color:#512da8; margin-bottom:8px; text-transform:uppercase;">Node.js Cache Files:</div>`;
+                                cacheDiv.innerHTML = `<div style="font-weight:bold; font-size:11px; color:#512da8; margin-bottom:4px; text-transform:uppercase;">Node.js Cache Files:</div>`;
+                                if (serverStartTimeStr) {
+                                    cacheDiv.innerHTML += `<div style="font-size:10px; color:#666; margin-bottom:8px; font-style:italic;">Server started: ${serverStartTimeStr}</div>`;
+                                }
                                 const cacheUl = document.createElement('ul');
                                 cacheUl.style.cssText = 'list-style:none; padding:0; margin:0; font-size:11px; display:flex; flex-direction:column; gap:6px; font-family:monospace;';
                                 
                                 filtered.forEach(item => {
                                     const baseName = item.path.split(/[\\/]/).pop();
-                                    const timeStr = item.mtime ? new Date(item.mtime).toLocaleTimeString() : '--:--';
+                                    const timeStr = item.mtime ? new Date(item.mtime).toLocaleString() : '--:--';
                                     const syncStatus = item.isStale ? ' <span style="color:red; font-weight:bold;">[OUT OF SYNC]</span>' : '';
                                     const li = document.createElement('li');
                                     li.style.cursor = 'pointer';
@@ -1673,7 +1680,7 @@
                                     cacheUl.appendChild(li);
                                 });
                                 cacheDiv.appendChild(cacheUl);
-                                sidebar.prepend(cacheDiv);
+                                sidebar.insertBefore(cacheDiv, uploadBtn);
                             }
                         }
                     } catch (e) {}
@@ -1965,7 +1972,10 @@
                 
                 li.innerHTML = `
                     <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden; min-width: 0;">
-                        <div class="updater-title" style="flex: 0 0 28%; color: #3fa9f5; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; min-width: 0; text-align: left !important;" title="${p.fullPath || ''}">${p.name || 'Unknown'}</div>
+                        <div class="updater-title" style="flex: 0 0 28%; color: #3fa9f5; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; min-width: 0; text-align: left !important; display: flex; align-items: center; gap: 6px;" title="${p.fullPath || ''}">
+                            ${p.name || 'Unknown'}
+                            ${p.hasStaleFiles ? '<i class="fa-solid fa-triangle-exclamation" style="color: #ffaa00; font-size: 12px;" title="Node.js Cache Out of Sync: some backend files have been modified on disk but are not yet reloaded in memory. A server restart is required."></i>' : ''}
+                        </div>
                         <div class="updater-subtitle" style="flex: 0 0 18%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
                             ${p.author || 'Unknown'}
                         </div>

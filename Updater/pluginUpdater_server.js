@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.1.5b)
+ * Updater Plugin for FM-DX Webserver (v. 0.1.5c)
  * ************************************************
  */
 
@@ -281,8 +281,75 @@ endpointsRouter.get('/plugins/Updater/debug-cache', (req, res) => {
             return { path: filePath, isStale: false, mtime: null };
         }
     });
-    res.json(details);
+    res.json({
+        details,
+        serverStartTime: new Date(serverStartTime).toLocaleString()
+    });
 });
+
+/**
+ * Helper to scan local files belonging to a specific plugin (descriptor + local directory)
+ * Returns absolute paths.
+ */
+function getPluginLocalFilesAbsolute(fileName, localDir) {
+    const fileList = [];
+
+    // 1. Add the descriptor file if it exists
+    if (fileName) {
+        const filePath = path.join(pluginsDir, fileName);
+        if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+            fileList.push(filePath);
+        }
+    }
+
+    // 2. Scan the local directory recursively
+    if (localDir && localDir !== "" && localDir !== "." && localDir !== "..") {
+        const fullDir = path.resolve(pluginsDir, localDir);
+        // Security check: ensure path is within plugins directory
+        if (fullDir.startsWith(pluginsDir) && fs.existsSync(fullDir) && fs.statSync(fullDir).isDirectory()) {
+            const scan = (dir) => {
+                const entries = fs.readdirSync(dir, { withFileTypes: true });
+                for (const entry of entries) {
+                    const resPath = path.join(dir, entry.name);
+                    if (entry.isDirectory()) {
+                        scan(resPath);
+                    } else {
+                        fileList.push(resPath);
+                    }
+                }
+            };
+            scan(fullDir);
+        }
+    }
+    return [...new Set(fileList)];
+}
+
+/**
+ * Helper function to get cache details for specific files.
+ * Returns an array of objects with path, isStale, and mtime.
+ */
+function getCacheDetailsForFiles(filePaths) {
+    const cacheDetails = [];
+    const cacheKeys = Object.keys(require.cache);
+    for (const filePath of filePaths) {
+        // Find the exact match in require.cache
+        const cachedPath = cacheKeys.find(key => key === filePath || path.resolve(key) === path.resolve(filePath));
+        if (cachedPath) {
+            try {
+                const stats = fs.statSync(cachedPath);
+                cacheDetails.push({
+                    path: cachedPath,
+                    isStale: stats.mtimeMs > serverStartTime,
+                    mtime: stats.mtime
+                });
+            } catch (e) {
+                // File might have been deleted from disk but still in cache
+                cacheDetails.push({ path: cachedPath, isStale: false, mtime: null });
+            }
+        }
+    }
+    return cacheDetails;
+}
 
 /**
  * Endpoint to retrieve global plugin options
@@ -448,10 +515,18 @@ endpointsRouter.get('/plugins/Updater/list-dir', (req, res) => {
     try {
         if (!fs.existsSync(absolutePath)) return res.json([]);
         const entries = fs.readdirSync(absolutePath, { withFileTypes: true });
-        const list = entries.map(entry => ({
-            name: entry.name,
-            isDir: entry.isDirectory()
-        }));
+        const list = entries.map(entry => {
+            try {
+                const stats = fs.statSync(path.join(absolutePath, entry.name));
+                return {
+                    name: entry.name,
+                    isDir: entry.isDirectory(),
+                    mtime: stats.mtime
+                };
+            } catch (e) {
+                return { name: entry.name, isDir: entry.isDirectory(), mtime: null };
+            }
+        });
         res.json(list);
     } catch (e) {
         logError(`[Updater] Error listing directory ${relativePath}:`, e);
@@ -495,40 +570,13 @@ endpointsRouter.post('/plugins/Updater/save-file', express.json({ limit: '10mb' 
 /**
  * Endpoint to scan local files belonging to a specific plugin (descriptor + local directory)
  */
-endpointsRouter.get('/plugins/Updater/scan-local-files', (req, res) => {
+endpointsRouter.get('/plugins/Updater/scan-local-files', (req, res) => { // This endpoint is called by the frontend's Explore modal
     const { fileName, localDir } = req.query;
-    const fileList = [];
-
     try {
-        // 1. Add the descriptor file if it exists
-        if (fileName) {
-            const filePath = path.join(pluginsDir, fileName);
-            if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-                fileList.push(fileName);
-            }
-        }
-
-        // 2. Scan the local directory recursively
-        if (localDir && localDir !== "" && localDir !== "." && localDir !== "..") {
-            const fullDir = path.resolve(pluginsDir, localDir);
-            // Security check: ensure path is within plugins directory
-            if (fullDir.startsWith(pluginsDir) && fs.existsSync(fullDir) && fs.statSync(fullDir).isDirectory()) {
-                const scan = (dir) => {
-                    const entries = fs.readdirSync(dir, { withFileTypes: true });
-                    for (const entry of entries) {
-                        const resPath = path.join(dir, entry.name);
-                        if (entry.isDirectory()) {
-                            scan(resPath);
-                        } else {
-                            // Path relative to plugins directory, using forward slashes
-                            fileList.push(path.relative(pluginsDir, resPath).replace(/\\/g, '/'));
-                        }
-                    }
-                };
-                scan(fullDir);
-            }
-        }
-        res.json([...new Set(fileList)].sort());
+        const absoluteFiles = getPluginLocalFilesAbsolute(fileName, localDir);
+        // For the endpoint, we still want relative paths for the frontend to display
+        const relativeFiles = absoluteFiles.map(f => path.relative(pluginsDir, f).replace(/\\/g, '/'));
+        res.json(relativeFiles.sort());
     } catch (e) {
         res.status(500).json([]);
     }
@@ -782,14 +830,28 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                             // Avoid re-processing the same logical plugin if it has multiple files
                             if (processedLogicalNames.has(pluginNameFromConfig)) continue;
 
+                            const localDescriptorName = path.basename(file); // e.g., FavStations.js
                             const config = {
+                                name: pluginNameFromConfig,
+                                logicalName: pluginNameFromConfig,
+                                // Determine localDir from config.frontEndPath for cache check
+                                localDir: (feMatch && feMatch[1].includes('/')) ? feMatch[1].split('/')[0] : ""
+                            };
+
+                            // Get all local files for this plugin (absolute paths)
+                            const associatedLocalFiles = getPluginLocalFilesAbsolute(localDescriptorName, config.localDir);
+                            // Check cache status for these files
+                            const cacheStatus = getCacheDetailsForFiles(associatedLocalFiles);
+                            const hasStaleFiles = cacheStatus.some(item => item.isStale);
+
+                            // Re-create config object with full details
+                            const fullConfig = {
                                 name: pluginNameFromConfig,
                                 logicalName: pluginNameFromConfig,
                                 version: verMatch ? verMatch[1] : '0.0.0',
                                 author: authorMatch ? authorMatch[1] : 'Unknown',
                                 frontEndPath: feMatch ? feMatch[1] : ''
                             };
-                            const localDescriptorName = path.basename(file); // e.g., FavStations.js
 
                             // Get dynamic override for this plugin name
                             const dynOverride = dynamicData[pluginNameFromConfig] || {};
@@ -797,18 +859,18 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
 
                             // --- Prepare the "main" entry ---
                             let mainEntry = {
-                                ...config, // Base info from local file
+                                ...fullConfig, // Base info from local file
                                 fileName: localDescriptorName, // Just the file name
                                 fullPath: filePath,
                                 localDescriptorName: localDescriptorName, // Store for matching
                                 logicalName: pluginNameFromConfig,
                                 // Default branch for this entry is 'main'
                                 branch: 'main',
+                                hasStaleFiles: hasStaleFiles, // Add this new property
                                 // Prioritize repoUrl/fileUrl/localDir from dynamicData if it's for 'main' or not branch-specific
                                 repoUrl: dynOverride.repoUrl || staticInfo.repoUrl,
-                                // If the override is for a different branch, the Main row must use local defaults
-                                fileUrl: (dynOverride.branch && dynOverride.branch !== 'main') ? config.frontEndPath : (dynOverride.fileUrl || config.frontEndPath),
-                                localDir: (dynOverride.branch && dynOverride.branch !== 'main') ? (path.dirname(config.frontEndPath).replace(/\\/g, '/') || '') : (dynOverride.localDir || path.dirname(config.frontEndPath).replace(/\\/g, '/') || '')
+                                fileUrl: (dynOverride.branch && dynOverride.branch !== 'main') ? fullConfig.frontEndPath : (dynOverride.fileUrl || fullConfig.frontEndPath),
+                                localDir: (dynOverride.branch && dynOverride.branch !== 'main') ? (path.dirname(fullConfig.frontEndPath).replace(/\\/g, '/') || '') : (dynOverride.localDir || path.dirname(fullConfig.frontEndPath).replace(/\\/g, '/') || '')
                             };
 
                             // Store local data for subsequent branch scanning
@@ -828,7 +890,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                                 const discovered = await discoverMetadataFromRepo(mainEntry.repoUrl, 'main');
                                 if (discovered) {
                                     logInfo(`[${pluginName}] Discovered metadata for ${mainEntry.name} (main):`, discovered);
-                                    // Update dynamicData, preserving the original branch if it was specific
+                                    // Update dynamicData, preserving the original branch if it was specific (e.g., 'develop')
                                     const updateData = { ...discovered, repoUrl: mainEntry.repoUrl };
                                     if (originalBranch && originalBranch !== 'main') {
                                         delete updateData.branch; // Don't let main discovery overwrite develop
@@ -897,8 +959,16 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                     fileName: localInfo.localDescriptorName,
                     fullPath: localInfo.filePath,
                     localDescriptorName: localInfo.localDescriptorName,
-                    ...ovrData, // I dati GitHub vengono presi direttamente dal JSON
-                    branch: ovrData.branch
+                    ...ovrData, // GitHub data is taken directly from JSON
+                    branch: ovrData.branch,
+                    // Calculate hasStaleFiles for secondary branches
+                    hasStaleFiles: (() => {
+                        const secondaryBranchLocalFiles = getPluginLocalFilesAbsolute(
+                            localInfo.localDescriptorName,
+                            ovrData.localDir || (localInfo.config.frontEndPath ? path.dirname(localInfo.config.frontEndPath).replace(/\\/g, '/') : '')
+                        );
+                        return getCacheDetailsForFiles(secondaryBranchLocalFiles).some(item => item.isStale);
+                    })()
                 });
             } else {
                 logInfo(`[Updater] -> KO: The main plugin "${logicalName}" was not detected locally. Verify that the "name" in pluginConfig of the .js file matches this string exactly.`);
