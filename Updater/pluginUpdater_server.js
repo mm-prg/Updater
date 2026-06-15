@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.1.5)
+ * Updater Plugin for FM-DX Webserver (v. 0.1.5b)
  * ************************************************
  */
 
@@ -23,6 +23,9 @@ const pluginsDir = path.resolve(__dirname, '..');
 // To reach 'main/', we go up two levels.
 const serverRootDir = path.resolve(__dirname, '..', '..');
 const configsDir = path.resolve(serverRootDir, 'plugins_configs');
+
+// Track server start time to detect stale cache
+const serverStartTime = Date.now();
 
 // Path for manual settings (GitHub overrides)
 const repoDataPath = path.join(__dirname, 'repo_data.json'); // Static file (known)
@@ -265,10 +268,20 @@ endpointsRouter.get('/plugins/Updater/branches', async (req, res) => {
  * Debug endpoint to view files loaded in the Node.js cache
  */
 endpointsRouter.get('/plugins/Updater/debug-cache', (req, res) => {
-    // Returns an array with the absolute paths of all modules currently in cache
     const cacheKeys = Object.keys(require.cache);
-//    logInfo(`[${pluginName}] Debug: Cache inspection requested. ${cacheKeys.length} files in cache.`);
-    res.json(cacheKeys);
+    const details = cacheKeys.map(filePath => {
+        try {
+            const stats = fs.statSync(filePath);
+            return {
+                path: filePath,
+                isStale: stats.mtimeMs > serverStartTime,
+                mtime: stats.mtime
+            };
+        } catch (e) {
+            return { path: filePath, isStale: false, mtime: null };
+        }
+    });
+    res.json(details);
 });
 
 /**
@@ -562,15 +575,39 @@ endpointsRouter.get('/plugins/Updater/read-file', (req, res) => {
     if (!fileName) return res.status(400).send('Missing fileName');
     
     let baseDir = pluginsDir;
-    if (root === 'configs') baseDir = configsDir;
-    else if (root === 'server') baseDir = serverRootDir;
-    const filePath = path.resolve(baseDir, fileName);
+    let filePath;
+    let isSafe = false;
+
+    if (root === 'cache') {
+        // For cache items, fileName is an absolute path. 
+        // We only allow reading if the file is currently loaded in Node.js cache.
+        filePath = fileName;
+        isSafe = require.cache[filePath] !== undefined;
+        if (isSafe) {
+            try {
+                const cachedModule = require.cache[filePath];
+                const stats = fs.statSync(filePath);
+                return res.json({
+                    content: JSON.stringify(cachedModule.exports, null, 2),
+                    isStale: stats.mtimeMs > serverStartTime,
+                    lastModified: stats.mtime,
+                    serverStartedAt: new Date(serverStartTime).toLocaleString()
+                });
+            } catch (e) {
+                return res.status(500).send('Error displaying cache exports: circular structure or complex object.');
+            }
+        }
+    } else {
+        if (root === 'configs') baseDir = configsDir;
+        else if (root === 'server') baseDir = serverRootDir;
+        filePath = path.resolve(baseDir, fileName);
+
+        // Security: check that the file is inside the allowed folder using relative path
+        const relative = path.relative(baseDir, filePath);
+        isSafe = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
+    }
     
 //    logInfo(`[Updater] Read request for: ${fileName} (Root: ${root || 'plugins'})`);
-
-    // Security: check that the file is inside the allowed folder using relative path
-    const relative = path.relative(baseDir, filePath);
-    const isSafe = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
 
     if (!isSafe || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
         logError(`[Updater] Read access denied or file not found: ${filePath}. Safe check: ${isSafe}`);
@@ -648,13 +685,33 @@ endpointsRouter.post('/plugins/Updater/terminal-command', express.json({ limit: 
     // This is a critical security vulnerability if not properly protected.
     // Example: if (!req.user || !req.user.isAdmin) { return res.status(403).json({ ok: false, error: 'Unauthorized' }); }
 
-    const { command } = req.body;
+    const { command, sudoPassword: tempPassword } = req.body;
     if (!command) {
         return res.json({ ok: true, stdout: '', stderr: '', cwd: terminalCwd });
     }
 
-    const cmdToExec = `${command} & cd`;
-    logInfo(`[${pluginName}] Executing terminal command: "${command}" (CWD: ${terminalCwd})`);
+    const isWin = process.platform === "win32";
+    const pwdCmd = isWin ? "cd" : "pwd";
+    const shellSep = isWin ? "&" : "&&";
+    
+    let cmdToExec = `${command} ${shellSep} ${pwdCmd}`;
+
+    // Gestione speciale per sudo su Linux/macOS (rileva sudo ovunque nel comando)
+    if (!isWin && /\bsudo\b/.test(command)) {
+        const settings = readJsonFile(settingsPath);
+        const password = tempPassword || settings.sudoPassword;
+        
+        if (password) {
+            // Eseguiamo l'intero comando tramite shell (bash -c) preceduto da sudo -S per gestire correttamente pipe e concatenazioni.
+            // Usiamo -k per ignorare eventuali credenziali in cache e JSON.stringify per proteggere il comando da problemi di escape.
+            cmdToExec = `echo "${password}" | sudo -S -k bash -c ${JSON.stringify(command + ' && ' + pwdCmd)}`;
+        } else {
+            // Se sudo è richiesto ma non abbiamo password, avvisiamo il frontend
+            return res.json({ ok: false, needPassword: true, cwd: terminalCwd });
+        }
+    }
+
+    logInfo(`[${pluginName}] Executing terminal command: "${command}" (Platform: ${process.platform})`);
     
     exec(cmdToExec, { cwd: terminalCwd }, (error, stdout, stderr) => {
         let output = stdout || '';
@@ -662,7 +719,7 @@ endpointsRouter.post('/plugins/Updater/terminal-command', express.json({ limit: 
 
         if (stdout) {
             const lines = stdout.trim().split(/\r?\n/);
-            newCwd = lines.pop().trim(); // The last line is the result of the trailing 'cd'
+            newCwd = lines.pop().trim(); // L'ultima riga è il risultato di pwd/cd
             output = lines.join('\n');   // The rest is the actual command output
         }
 

@@ -9,7 +9,7 @@
 "use strict";
 
 (() => {
-    const pluginVersion = '0.1.5';
+    const pluginVersion = '0.1.5b';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg'; 
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -1155,7 +1155,7 @@
                 event.stopPropagation();
                 const btn = event.currentTarget;
                 const rect = btn.getBoundingClientRect();
-                let currentSettings = { showInPluginPanel: true, showInHeader: true, showInSetup: true, advancedMode: false };
+                let currentSettings = { showInPluginPanel: true, showInHeader: true, showInSetup: true, advancedMode: false, sudoPassword: '' };
                 try {
                     const res = await fetch('/plugins/Updater/settings');
                     if (res.ok) {
@@ -1174,6 +1174,11 @@
                         <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="opt-show-setup" ${currentSettings.showInSetup ? 'checked' : ''}> Setup Table</label>
                         <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer; color:#ffaa00;"><input type="checkbox" id="opt-advanced-mode" ${currentSettings.advancedMode ? 'checked' : ''}> Advanced Mode (Explore Files)</label>
                     </div>
+                    <div style="margin-bottom:12px; border-bottom:1px solid #333; padding-bottom:8px; font-weight:bold; color:#3fa9f5; font-size:11px; text-transform:uppercase;">Linux Terminal</div>
+                    <div style="margin-bottom:15px;">
+                        <label style="display:block; font-size:11px; margin-bottom:5px; color:#aaa;">Sudo Password (optional):</label>
+                        <input type="password" id="opt-sudo-pass" value="${currentSettings.sudoPassword || ''}" style="width:100%; padding:6px; background:#333; border:1px solid #444; color:#fff; border-radius:4px; font-size:12px;">
+                    </div>
                     <button id="opt-save" style="width:100%; padding:6px; border:none; background:#fe0830; color:#fff; cursor:pointer; border-radius:4px; font-size:11px; font-weight:bold; margin-bottom:15px;">SAVE SETTINGS</button>
                 `;
                 document.body.appendChild(dropdown);
@@ -1191,7 +1196,8 @@
                         showInPluginPanel: dropdown.querySelector('#opt-show-panel').checked,
                         showInHeader: dropdown.querySelector('#opt-show-header').checked,
                         showInSetup: dropdown.querySelector('#opt-show-setup').checked,
-                        advancedMode: dropdown.querySelector('#opt-advanced-mode').checked
+                        advancedMode: dropdown.querySelector('#opt-advanced-mode').checked,
+                        sudoPassword: dropdown.querySelector('#opt-sudo-pass').value
                     };
                     try {
                         const res = await fetch('/plugins/Updater/settings', {
@@ -1301,12 +1307,15 @@
                     if (forceReadOnly) return false;
                     if (!name) return false;
                     if (root === 'server' && name !== 'config.json') return false; // Only config.json is editable in server root
+                    if (root === 'cache') return false; // Cache files are read-only
                     return isTextFile(name); // Must be a text file
                 };
-                const isDeletableFile = (name, root) => isEditableFile(name, root) && name !== 'config.json'; // Deletable if editable and not config.json
+                const isDeletableFile = (name, root) => isEditableFile(name, root) && name !== 'config.json' && root !== 'cache';
 
                 const isSidebarHidden = (root) => root === 'server';
                 let originalContent = content || '';
+
+                const localFilenames = new Set();
 
                 let currentExplorerPath = '';
                 if (fileName === 'serverlog.txt' && initialRoot === 'server') {
@@ -1327,7 +1336,7 @@
                 const modal = document.createElement('div');
                 modal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:95%; max-width:1200px; height:90vh; display:flex; flex-direction:column; box-shadow:0 10px 25px rgba(0,0,0,0.5); color:#333;';
 
-                const rootLabel = initialRoot === 'configs' ? 'configs' : 'plugins';
+                const rootLabel = initialRoot === 'configs' ? 'configs' : (initialRoot === 'server' ? 'server' : (initialRoot === 'cache' ? 'Node.js Cache' : 'plugins'));
                 const header = document.createElement('div');
                 header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #ccc; padding-bottom:5px;';
                 header.insertAdjacentHTML('beforeend', `<h3 style="margin:0;"><i class="fa-solid fa-magnifying-glass" style="color:#3fa9f5;"></i> Explore [${rootLabel}]: <span class="sc-view-filename" style="color:#3fa9f5;">${fileName || 'Select a file'}</span></h3>`);
@@ -1462,6 +1471,25 @@
                         if (!res.ok) throw new Error();
                         const fetchedText = await res.text();
                         let displayContent = fetchedText;
+
+                        // Handle cache sync metadata
+                        if (currentRoot === 'cache') {
+                            try {
+                                const data = JSON.parse(fetchedText);
+                                displayContent = data.content;
+                                if (data.isStale) {
+                                    const warning = document.createElement('div');
+                                    warning.style.cssText = 'background:#fff3cd; color:#856404; padding:10px; border-bottom:1px solid #ffeeba; font-size:12px; font-weight:bold; text-align:center;';
+                            const fileDate = new Date(data.lastModified).toLocaleString();
+                            warning.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <b>Cache Out of Sync:</b> The version in memory is outdated.<br>` +
+                                              `<small>File on disk: ${fileDate} | Loaded at start: ${data.serverStartedAt}</small><br>` +
+                                              `Restart the server to apply changes.`;
+                                    editorArea.insertBefore(warning, editorArea.firstChild);
+                                    setTimeout(() => warning.remove(), 10000); // Remove after 10s
+                                }
+                            } catch(e) {}
+                        }
+
                         if (targetFile === 'serverlog.txt' && currentRoot === 'server') {
                             const lines = displayContent.split('\n');
                             let startIndex = -1;
@@ -1599,6 +1627,10 @@
                         const res = await fetch(`/plugins/Updater/scan-local-files?fileName=${encodeURIComponent(fileName || '')}&localDir=${encodeURIComponent(localDir || '')}`);
                         if (!res.ok) return;
                         const files = await res.json();
+                        
+                        // Popoliamo il set dei nomi file per il filtraggio della cache
+                        files.forEach(f => localFilenames.add(f.split(/[\\/]/).pop()));
+
                         if (files.length > 0) {
                             const metaDiv = document.createElement('div');
                             metaDiv.style.cssText = 'margin-bottom:15px; background:#f0fff0; border:1px solid #c2e0c2; border-radius:4px; padding:10px; border-left: 3px solid #2d5a2d;';
@@ -1615,6 +1647,34 @@
                             metaDiv.appendChild(metaUl);
                             localFilesContainer.innerHTML = '';
                             localFilesContainer.appendChild(metaDiv);
+                        }
+
+                        // Scan Node.js Cache for matching files
+                        const cacheRes = await fetch('/plugins/Updater/debug-cache?t=' + Date.now());
+                        if (cacheRes.ok) {
+                            const cacheInfo = await cacheRes.json();
+                            const filtered = cacheInfo.filter(item => localFilenames.has(item.path.split(/[\\/]/).pop()));
+                            
+                            if (filtered.length > 0) {
+                                const cacheDiv = document.createElement('div');
+                                cacheDiv.style.cssText = 'margin-bottom:15px; background:#f3e5f5; border:1px solid #d1c4e9; border-radius:4px; padding:10px; border-left: 3px solid #673ab7;';
+                                cacheDiv.innerHTML = `<div style="font-weight:bold; font-size:11px; color:#512da8; margin-bottom:8px; text-transform:uppercase;">Node.js Cache Files:</div>`;
+                                const cacheUl = document.createElement('ul');
+                                cacheUl.style.cssText = 'list-style:none; padding:0; margin:0; font-size:11px; display:flex; flex-direction:column; gap:6px; font-family:monospace;';
+                                
+                                filtered.forEach(item => {
+                                    const baseName = item.path.split(/[\\/]/).pop();
+                                    const timeStr = item.mtime ? new Date(item.mtime).toLocaleTimeString() : '--:--';
+                                    const syncStatus = item.isStale ? ' <span style="color:red; font-weight:bold;">[OUT OF SYNC]</span>' : '';
+                                    const li = document.createElement('li');
+                                    li.style.cursor = 'pointer';
+                                    li.innerHTML = `<span style="color:#0066cc; text-decoration:underline;">${baseName}</span> <span style="color:#888; font-size:9px;">(${timeStr})</span>${syncStatus}`;
+                                    li.onclick = () => { currentRoot = 'cache'; loadFileContent(item.path); };
+                                    cacheUl.appendChild(li);
+                                });
+                                cacheDiv.appendChild(cacheUl);
+                                sidebar.prepend(cacheDiv);
+                            }
                         }
                     } catch (e) {}
                 };
@@ -1787,12 +1847,12 @@
                 modal.innerHTML = `
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #333; padding-bottom:8px;">
                         <h3 style="margin:0; color:#fff; font-size:16px;">Server Terminal <span style="font-size:11px; color:#ffaa00;">(node.js 'exec' commands)</span></h3>
-                        <button id="terminal-close-btn" class="updater-btn" style="background:#fe0830; color:#fff; padding:2px 10px; font-size:10px; border-radius:3px;">Close</button>
+                        <button id="terminal-close-btn" class="updater-btn" style="background:#fe0830; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:60px; flex-shrink:0; text-align:center;">Close</button>
                     </div>
 
                     <div id="terminal-container" style="flex-grow:1; background:#000; border:1px solid #333; border-radius:4px; overflow-y:auto; padding:15px; font-family:monospace; font-size:14px; line-height: 1.4; color:#0f0; cursor:text;">
                         <div id="terminal-history" style="white-space: pre-wrap; word-break: break-all;">Welcome to the server terminal. Type 'help' for info.</div>
-                        <div style="display:flex; align-items:flex-start; margin-top:5px;">
+                        <div style="display:flex; align-items:center; margin-top:5px;">
                             <span id="terminal-prompt-path" style="color:#3fa9f5; white-space:nowrap; margin-right:8px;">... ></span>
                             <input type="text" id="terminal-input" autocomplete="off" spellcheck="false" style="flex-grow:1; background:transparent; color:#fff; border:none; outline:none; padding:0; margin:0; font-family:inherit; font-size:inherit; line-height:inherit;">
                         </div>
@@ -1826,9 +1886,11 @@
                     terminalPromptPath.textContent = (path || '') + ' >';
                 };
 
-                const executeCommand = async () => {
-                    const command = terminalInput.value.trim();
-                    if (!command) return;
+                let lastAttemptedCommand = '';
+
+                const executeCommand = async (sudoPwd = null) => {
+                    const command = sudoPwd !== null ? lastAttemptedCommand : terminalInput.value.trim();
+                    if (!command && sudoPwd === null) return;
                     
                     if (command.toLowerCase() === 'cls' || command.toLowerCase() === 'clear') {
                         terminalHistory.innerHTML = '';
@@ -1837,7 +1899,11 @@
                         return;
                     }
 
-                    appendOutput(`> ${command}`, '#fff');
+                    if (sudoPwd === null) {
+                        appendOutput(`> ${command}`, '#fff');
+                        lastAttemptedCommand = command;
+                    }
+
                     terminalInput.value = '';
                     terminalInput.disabled = true;
                     terminalInput.placeholder = 'Executing...';
@@ -1846,9 +1912,16 @@
                         const res = await fetch('/plugins/Updater/terminal-command', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ command })
+                            body: JSON.stringify({ command, sudoPassword: sudoPwd })
                         });
                         const data = await res.json();
+
+                        if (data.needPassword) {
+                            const pwd = prompt("Sudo password required for this command:");
+                            if (pwd !== null) return executeCommand(pwd);
+                            appendOutput("Command cancelled: password not provided.", "#ffaa00");
+                        }
+
                         if (data.cwd) updatePrompt(data.cwd);
                         if (data.ok) {
                             appendOutput(data.stdout, '#0f0');
