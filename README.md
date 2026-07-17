@@ -114,16 +114,25 @@ Clicking on "Explore" opens the Explore page.
 Select a file or a directory from the dropdown menus on the left, to browse and check files stored in the server directories **"\plugins"** and **"\plugins_configs"**
 
 You may view the content of text files and even modify them. 
-So, you may **edit the plugin configuration file**, usually stored in the **\plugins_configs**
-Or you can edit the **plugin parameters** stored in the plugin.js file itself
+
 
 When you download a plugin via the Updater, a sidebar will appear with a list of the downloaded files and the skipped files. To avoid overfilling the server \plugins directory, no file outside the plugins directory is downloaded. If you want to view these files, just click on the repository link of the plugin, shown above. 
+
+## Modifying a plugin parameters or configuration file
+
+- Click on Explore, select the **"plugins_configs"** dropdown menu
+- Click on the plugin config file (i.e. Updater.json, etc), that shows the content of the file
+- Click on "Enable Editing", modify the file and save the changes
+- If the plugin has no configuration file, but has **parameters** stored in the plugin.js file itself
+- Look in the green box, click on the plugin file and edit it!
 
 
 ## Options Menu
 
 Click the **Gear Icon** next to the version number to access advanced settings:
 - **Visibility**: Toggle the presence of the Updater in the Plugin Panel, Header Bar, or the Setup Table.
+- **Advanced Mode** Hide/Show the Advanced Tools Menu and the Explore button
+- **Sudo Password** If you want, you may store the server password here
 
 
 ## Notes
