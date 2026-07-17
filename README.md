@@ -14,7 +14,7 @@ You may also explore the plugin files stored on the server and directly check an
 Thanks to @Ian Kelly | Reading, G 🇬🇧 for his report!
 If you find a plugin that isn't automatically recognized, please let me know and I'll add it to the database.
 
-## Version 2.1
+## Version 2.0
 - Added a server terminal, working on both Linux amd Windows, which allows you to send commands directly to the server
 
 ## Features
