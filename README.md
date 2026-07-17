@@ -8,6 +8,11 @@ You may also explore the plugin files stored on the server and check and modify 
 
 <img width="826" height="378" alt="plugins list" src="https://github.com/user-attachments/assets/88d6ba0e-50e1-4ecf-aa46-64750b0aa457" />
 
+## Version 2.1
+
+Automatic recognition of locally installed plugins has been improved. The plugin should automatically recognize most of the available plugins and therefore make the first installation easier.
+Thanks to @Ian Kelly | Reading, G 🇬🇧 for his report!
+If you find a plugin that isn't automatically recognized, please let me know and I'll add it to the database.
 
 ## Features
 
