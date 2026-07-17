@@ -10,7 +10,7 @@ You may also explore the plugin files stored on the server and check and modify 
 
 ## Version 2.1
 
-Automatic recognition of locally installed plugins has been improved. The plugin should automatically recognize most of the available plugins and therefore make the first installation easier.
+- Automatic recognition of locally installed plugins has been improved. The plugin should automatically recognize most of the available plugins and therefore make the first installation easier.
 Thanks to @Ian Kelly | Reading, G 🇬🇧 for his report!
 If you find a plugin that isn't automatically recognized, please let me know and I'll add it to the database.
 
@@ -23,7 +23,7 @@ If you find a plugin that isn't automatically recognized, please let me know and
 - **Source Code Viewer**: Inspect local plugin descriptor files directly from the web interface.
 - **Update Check**: Remembers and displays the specific files that were modified or added during the last update process. 
 
-## Installation
+## First installation
 
 Follow these steps to install the plugin:
 
@@ -32,6 +32,13 @@ Follow these steps to install the plugin:
 3. Restart the FM-DX-Webserver.
 4. Log in to the administrator panel, enable the plugin in the Setup page, and save.
 5. Restart the FM-DX-Webserver one more time.
+
+- After installation, clicking on one of the plugin icons will bring up the list of installed plugins
+- During the first installation, the plugin will try to automatically check which plugins are already installed and automatically check and derive the plugin's relative data (repository, installation directory, descriptor file).
+- Please be patient. This operation, which is only performed during the first installation, **may take some time**.
+- Se si apre la lista quando la lettura dei file è ancora in corso, la lista non sarà ancora visibile. Occorre semplicemente attendere un po' e poi aggiornare la pagina del browser. 
+
+
 
 ## Usage
 
