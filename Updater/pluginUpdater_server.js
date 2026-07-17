@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.2.0)
+ * Updater Plugin for FM-DX Webserver (v. 0.2.1)
  * ************************************************
  */
 
@@ -65,10 +65,10 @@ function readJsonFile(filePath) {
 /**
  * Loads plugin data: repo_data.json (known URLs) + plugins_data.json (overrides)
  */
-function loadOverrides() { 
+function loadOverrides() {
     const rawStatic = readJsonFile(repoDataPath);
     const dynamicData = readJsonFile(overridesPath);
-    
+
     // Normalize static data: convert simple URL strings to objects { repoUrl: URL }
     const staticData = {};
     for (const [name, val] of Object.entries(rawStatic)) {
@@ -83,15 +83,15 @@ function loadOverrides() {
 /**
  * Saves to plugins_data.json only data that differs from repo_data.json
  */
-function saveOverrides(overrides) { 
-    try { 
+function saveOverrides(overrides) {
+    try {
         const rawStatic = readJsonFile(repoDataPath);
         const toSave = {};
 
         for (const [name, data] of Object.entries(overrides)) {
             const staticVal = rawStatic[name];
             const staticEntry = typeof staticVal === 'string' ? { repoUrl: staticVal } : (staticVal || {});
-            
+
             if (JSON.stringify(staticEntry) !== JSON.stringify(data)) {
                 toSave[name] = data;
             }
@@ -122,13 +122,13 @@ const download = (url, dest, headers = {}) => new Promise((resolve, reject) => {
     };
     https.get(url, options, (response) => {
         if (response.statusCode !== 200) {
-            fs.unlink(dest, () => {});
+            fs.unlink(dest, () => { });
             return reject(new Error(`Status ${response.statusCode} for ${url}`));
         }
         response.pipe(file);
         file.on('finish', () => file.close(() => resolve()));
     }).on('error', (err) => {
-        fs.unlink(dest, () => {});
+        fs.unlink(dest, () => { });
         reject(err);
     });
 });
@@ -148,7 +148,7 @@ const fetchGithubApi = (url) => new Promise((resolve, reject) => {
             lastRateLimit.remaining = remaining;
             lastRateLimit.limit = limit;
             lastRateLimit.reset = reset;
-            logInfo(`[Updater] GitHub API Rate Limit: ${remaining}/${limit}, Reset: ${reset} (URL: ${url})`);
+//            logInfo(`[Updater] GitHub API Rate Limit: ${remaining}/${limit}, Reset: ${reset} (URL: ${url})`);
         }
 
         let data = '';
@@ -158,6 +158,18 @@ const fetchGithubApi = (url) => new Promise((resolve, reject) => {
             try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
         });
     }).on('error', reject);
+});
+
+const fetchRawText = (url) => new Promise((resolve, reject) => {
+    const options = {
+        headers: { 'User-Agent': 'FM-DX-Webserver-Updater', 'Cache-Control': 'no-cache' }
+    };
+    https.get(url, options, (res) => {
+        if (res.statusCode !== 200) return resolve('');
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => resolve(data));
+    }).on('error', () => resolve(''));
 });
 
 /**
@@ -170,47 +182,44 @@ async function discoverMetadataFromRepo(repoUrl, preferredBranch = null) {
     const [_, owner, repo, urlBranch] = match;
 
     try {
-        // Fetch repository info to get the default branch
-        const repoInfo = await fetchGithubApi(`https://api.github.com/repos/${owner}/${repo}`).catch(() => null);        
-        let branch = urlBranch || preferredBranch || repoInfo?.default_branch || 'main';
-        // If no specific branch was in the URL or preferred, and 'develop' exists, prefer 'develop'
-        const branchesRes = await fetchGithubApi(`https://api.github.com/repos/${owner}/${repo}/branches`).catch(() => null);
-        const branchList = Array.isArray(branchesRes) ? branchesRes.map(b => b.name) : [];
-        if ((!urlBranch && !preferredBranch) && branchList.includes('develop')) branch = 'develop';
+        const branch = urlBranch || preferredBranch || 'main';
 
-        // Pre-check rate limit using a lightweight head/get if possible, 
-        // but here we just try to fetch and let fetchGithubApi log the remaining calls.
-        const rateCheck = await fetchGithubApi(`https://api.github.com/rate_limit`).catch(() => null);
-        if (rateCheck && rateCheck.resources && rateCheck.resources.core.remaining < 2) {
-            logError(`[Updater] GitHub API limit too low (${rateCheck.resources.core.remaining}). Aborting discovery.`);
+//    logInfo(`[${pluginName}] discoverMetadataFromRepo called for ${owner}/${repo} with branch=${branch}`);
+        const treeData = await fetchGithubApi(`https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`).catch((err) => {
+            logError(`[${pluginName}] GitHub tree request failed for ${owner}/${repo}@${branch}:`, err.message || err);
+            return null;
+        });
+        if (!treeData || !Array.isArray(treeData.tree)) {
+            logInfo(`[${pluginName}] GitHub tree response invalid or empty for ${owner}/${repo}@${branch}`);
             return null;
         }
 
-        let contents = await fetchGithubApi(`https://api.github.com/repos/${owner}/${repo}/contents/?ref=${branch}`);
-        if (!Array.isArray(contents)) return null;
+        const hasPluginsDir = treeData.tree.some(item => item.type === 'tree' && item.path.toLowerCase() === 'plugins');
+        const jsFiles = treeData.tree
+            .filter(item => item.type === 'blob' && item.path.endsWith('.js') && !item.path.endsWith('index.js') && !item.path.includes('.frontend.') && !item.path.toLowerCase().includes('server'))
+            .filter(item => !hasPluginsDir || item.path.split('/')[0].toLowerCase() === 'plugins');
 
-        const pluginsDirItem = contents.find(f => f.name.toLowerCase() === 'plugins' && f.type === 'dir');
-        if (pluginsDirItem) {
-            const pContents = await fetchGithubApi(`https://api.github.com/repos/${owner}/${repo}/contents/plugins?ref=${branch}`);
-            if (Array.isArray(pContents)) contents = pContents;
+        if (jsFiles.length === 0) {
+            logInfo(`[${pluginName}] No candidate JS files found in repository ${owner}/${repo}@${branch}`);
+            return null;
         }
 
-        const jsFiles = contents.filter(f => f.name.endsWith('.js') && f.name !== 'index.js' && !f.name.includes('.frontend.'));
         for (const file of jsFiles) {
             const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${file.path}`;
-            const text = await new Promise((resolve) => {
-                const options = { headers: { 'User-Agent': 'FM-DX-Webserver-Updater', 'Cache-Control': 'no-cache' } };
-                https.get(rawUrl, options, res => {
-                    let d = ''; res.on('data', c => d += c); res.on('end', () => resolve(d));
-                }).on('error', () => resolve(''));
-            });
-
+            const text = await fetchRawText(rawUrl);
+            if (!text) {
+                logInfo(`[${pluginName}] Empty raw file response for ${rawUrl}`);
+                continue;
+            }
             if (text.includes('pluginConfig')) {
                 const feMatch = text.match(/frontEndPath\s*:\s*['"]([^'"]+)['"]/);
                 const localDir = (feMatch && feMatch[1].includes('/')) ? feMatch[1].split('/')[0] : "";
+//                logInfo(`[${pluginName}] Found descriptor ${file.path} with pluginConfig in ${owner}/${repo}@${branch}`);
                 return { fileUrl: file.path, localDir, branch };
             }
         }
+
+        logInfo(`[${pluginName}] No pluginConfig descriptor found in ${owner}/${repo}@${branch}`);
     } catch (e) {
         logError(`[Updater] Auto-discovery failed for ${repoUrl}:`, e);
     }
@@ -398,8 +407,8 @@ endpointsRouter.post('/plugins/Updater/save-override', express.json({ limit: '10
         }
 
         const overrides = loadOverrides();
-        
-        overrides[name] = { 
+
+        overrides[name] = {
             ...(overrides[name] || {}),
             ...(repoUrl !== undefined && repoUrl !== null && { repoUrl }),
             ...(fileUrl !== undefined && fileUrl !== null && { fileUrl }),
@@ -426,7 +435,7 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json({ limit: '10
     const { pluginName, rawBaseUrl, remoteDescriptorPath, localDescriptorName, localDir } = req.body;
     try {
         logInfo(`[Updater] Updating plugin: ${pluginName} from ${rawBaseUrl}`);
-        
+
         // Cattura l'intero branch, anche se contiene slash
         const repoMatch = rawBaseUrl.match(/github(?:usercontent)?\.com\/([^\/]+)\/([^\/]+)\/(.+)/);
         if (!repoMatch) throw new Error("Invalid repository URL format");
@@ -464,7 +473,7 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json({ limit: '10
             // the files directory is likely also located within that same subdirectory.
             let remoteDirPath = localDir.replace(/\\/g, '/');
             const descriptorDir = path.dirname(remoteDescriptorPath).replace(/\\/g, '/');
-            
+
             if (descriptorDir !== "." && descriptorDir !== "" && !remoteDirPath.startsWith(descriptorDir + "/")) {
                 // Prepend the descriptor's folder to the remote search path if it's not already there
                 remoteDirPath = (descriptorDir + "/" + remoteDirPath).replace(/\/+/g, '/');
@@ -478,9 +487,9 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json({ limit: '10
 
         // Step 4: Compare lists and save the metadata to new_data.json
         const notDownloadedList = allRepoFiles.filter(f => !downloadedList.includes(f));
-        
+
         const overrides = loadOverrides();
-        overrides[pluginName] = { 
+        overrides[pluginName] = {
             ...(overrides[pluginName] || {}),
             downloadedFiles: downloadedList,
             notDownloadedFiles: notDownloadedList,
@@ -507,7 +516,7 @@ endpointsRouter.get('/plugins/Updater/list-dir', (req, res) => {
     if (root === 'configs') baseDir = configsDir;
     else if (root === 'server') baseDir = serverRootDir;
     const absolutePath = path.resolve(baseDir, relativePath);
-    
+
     // Security: check that the path is inside the allowed folder
     if (!absolutePath.startsWith(baseDir)) {
         return res.status(403).send('Access denied');
@@ -622,7 +631,7 @@ endpointsRouter.post('/plugins/Updater/delete-file', express.json({ limit: '10mb
 endpointsRouter.get('/plugins/Updater/read-file', (req, res) => {
     const { fileName, root } = req.query;
     if (!fileName) return res.status(400).send('Missing fileName');
-    
+
     let baseDir = pluginsDir;
     let filePath;
     let isSafe = false;
@@ -655,8 +664,8 @@ endpointsRouter.get('/plugins/Updater/read-file', (req, res) => {
         const relative = path.relative(baseDir, filePath);
         isSafe = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
     }
-    
-//    logInfo(`[Updater] Read request for: ${fileName} (Root: ${root || 'plugins'})`);
+
+    //    logInfo(`[Updater] Read request for: ${fileName} (Root: ${root || 'plugins'})`);
 
     if (!isSafe || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
         logError(`[Updater] Read access denied or file not found: ${filePath}. Safe check: ${isSafe}`);
@@ -753,14 +762,14 @@ endpointsRouter.post('/plugins/Updater/terminal-command', express.json({ limit: 
     const isWin = platform === "win32";
     const pwdCmd = isWin ? "cd" : "pwd";
     const shellSep = isWin ? "&" : "&&";
-    
+
     let cmdToExec = `${command} ${shellSep} ${pwdCmd}`;
 
     // Gestione speciale per sudo su Linux/macOS (rileva sudo ovunque nel comando)
     if (!isWin && /\bsudo\b/.test(command)) {
         const settings = readJsonFile(settingsPath);
         const password = tempPassword || settings.sudoPassword;
-        
+
         if (password) {
             // Eseguiamo l'intero comando tramite shell (bash -c) preceduto da sudo -S per gestire correttamente pipe e concatenazioni.
             // Usiamo -k per ignorare eventuali credenziali in cache e JSON.stringify per proteggere il comando da problemi di escape.
@@ -772,7 +781,7 @@ endpointsRouter.post('/plugins/Updater/terminal-command', express.json({ limit: 
     }
 
     logInfo(`[${pluginName}] Executing terminal command: "${command}" (Platform: ${process.platform})`);
-    
+
     exec(cmdToExec, { cwd: terminalCwd }, (error, stdout, stderr) => {
         let output = stdout || '';
         let newCwd = terminalCwd;
@@ -802,15 +811,30 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
         logInfo(`[${pluginName}] Scanning directory: ${pluginsDir}`);
         const entries = fs.readdirSync(pluginsDir, { withFileTypes: true });
         const pluginList = [];
-        
-        // Load data to manage priority: Override > Code > repo_data
-        const dynamicData = readJsonFile(overridesPath);
+
+        // Load data to manage priority: Override > repo_data
+        const rawDynamic = readJsonFile(overridesPath);
+        const dynamicData = loadOverrides();
         const rawStatic = readJsonFile(repoDataPath);
         const staticData = {};
         for (const [n, v] of Object.entries(rawStatic)) {
             staticData[n] = typeof v === 'string' ? { repoUrl: v } : v;
         }
-        const overrides = loadOverrides(); 
+
+        const normalizeKey = (value) => String(value || '').toLowerCase().replace(/\s+/g, '').replace(/[-_\/\.]/g, '').replace(/[^a-z0-9]/g, '');
+        const findStaticRepoUrl = (name, descriptor, localDir) => {
+            const targets = [name, descriptor.replace(/\.js$/i, ''), localDir, descriptor, path.basename(descriptor, '.js')];
+            const normalizedTargets = targets.filter(Boolean).map(normalizeKey);
+            for (const [key, val] of Object.entries(rawStatic)) {
+                const normalizedKey = normalizeKey(key);
+                if (normalizedTargets.includes(normalizedKey) || normalizedTargets.some(t => normalizedKey.includes(t)) || normalizedKey.includes(normalizedTargets.join(''))) {
+                    return typeof val === 'string' ? val : val.repoUrl;
+                }
+            }
+            return null;
+        };
+
+        const overrides = loadOverrides();
         let needsSave = false;
 
         const processedLogicalNames = new Set();
@@ -824,21 +848,21 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
 
                 // Skip only core server entry points and frontend-only files
                 if (fileNameOnly !== 'index.js' && !fileNameOnly.includes('.frontend.') && fileNameOnly !== 'server.js') {
-                    try { 
+                    try {
                         // Read the file as text instead of using require() to avoid crashes with document/window
                         const text = fs.readFileSync(filePath, 'utf8');
-                        
+
                         if (text.includes('pluginConfig')) {
                             const nameMatch = text.match(/name\s*:\s*['"]([^'"]+)['"]/);
                             const verMatch = text.match(/version\s*:\s*['"]([^'"]+)['"]/);
                             const authorMatch = text.match(/author\s*:\s*['"]([^'"]+)['"]/);
                             const feMatch = text.match(/frontEndPath\s*:\s*['"]([^'"]+)['"]/);
-                            
+
                             if (!nameMatch) continue;
 
                             const pluginNameFromConfig = nameMatch[1].trim();
-//                            logInfo(`[Updater] Local plugin detected: "${pluginNameFromConfig}" in file ${file}`);
-                            
+                            //                            logInfo(`[Updater] Local plugin detected: "${pluginNameFromConfig}" in file ${file}`);
+
                             // Avoid re-processing the same logical plugin if it has multiple files
                             if (processedLogicalNames.has(pluginNameFromConfig)) continue;
 
@@ -861,7 +885,11 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
 
                             // Get dynamic override for this plugin name
                             const dynOverride = dynamicData[pluginNameFromConfig] || {};
-                            const staticInfo = staticData[pluginNameFromConfig] || {};
+                            let staticInfo = staticData[pluginNameFromConfig] || {};
+                            const fallbackRepoUrl = staticInfo.repoUrl ? null : findStaticRepoUrl(pluginNameFromConfig, localDescriptorName, fullConfig.localDir);
+                            if (!staticInfo.repoUrl && fallbackRepoUrl) {
+                                staticInfo = { repoUrl: fallbackRepoUrl };
+                            }
 
                             // --- Prepare the "main" entry ---
                             let mainEntry = {
@@ -879,6 +907,11 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                                 localDir: (dynOverride.branch && dynOverride.branch !== 'main') ? (path.dirname(fullConfig.frontEndPath).replace(/\\/g, '/') || '') : (dynOverride.localDir || path.dirname(fullConfig.frontEndPath).replace(/\\/g, '/') || '')
                             };
 
+                            // Segnala se non viene trovato il repository GitHub per il plugin
+                            if (!mainEntry.repoUrl || typeof mainEntry.repoUrl !== 'string' || !mainEntry.repoUrl.includes('github.com')) {
+                                logError(`[${pluginName}] GitHub repository not found for plugin: "${pluginNameFromConfig}"`);
+                            }
+
                             // Store local data for subsequent branch scanning
                             localPluginsInfo[pluginNameFromConfig] = { config: fullConfig, localDescriptorName, filePath };
                             processedLogicalNames.add(pluginNameFromConfig);
@@ -890,24 +923,33 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                             }
                             const originalBranch = dynOverride.branch;
 
-                            // Auto-discovery for missing repo details for the main entry
-                            if (mainEntry.repoUrl && (!mainEntry.branch || !mainEntry.fileUrl || mainEntry.localDir === undefined)) {
-                                logInfo(`[${pluginName}] Attempting auto-discovery for ${mainEntry.name} (main) at ${mainEntry.repoUrl}`);
-                                const discovered = await discoverMetadataFromRepo(mainEntry.repoUrl, 'main');
+                            const hasPluginOverride = Object.prototype.hasOwnProperty.call(rawDynamic, pluginNameFromConfig);
+                            const shouldCachePlugin = mainEntry.repoUrl && !hasPluginOverride;
+
+                            if (!mainEntry.repoUrl) {
+//                                logInfo(`[${pluginName}] Skipping verification because plugin has no repoUrl: ${mainEntry.name}`);
+                            } else if (hasPluginOverride) {
+//                                logInfo(`[${pluginName}] Skipping verification because plugin already has an override entry: ${mainEntry.name}`);
+                            }
+
+                            if (shouldCachePlugin) {
+//                                logInfo(`[${pluginName}] Verifying repository metadata before saving plugin data: ${mainEntry.name} (repoUrl=${mainEntry.repoUrl}, branch=${mainEntry.branch})`);
+                                const discovered = await discoverMetadataFromRepo(mainEntry.repoUrl, mainEntry.branch);
                                 if (discovered) {
-                                    logInfo(`[${pluginName}] Discovered metadata for ${mainEntry.name} (main):`, discovered);
-                                    // Update dynamicData, preserving the original branch if it was specific (e.g., 'develop')
-                                    const updateData = { ...discovered, repoUrl: mainEntry.repoUrl };
+//                                    logInfo(`[${pluginName}] Verified and discovered metadata for ${mainEntry.name}:`, discovered);
+                                    const updateData = { repoUrl: mainEntry.repoUrl, ...discovered };
                                     if (originalBranch && originalBranch !== 'main') {
                                         delete updateData.branch; // Don't let main discovery overwrite develop
                                     }
-                                    dynamicData[pluginNameFromConfig] = { ...dynamicData[pluginNameFromConfig], ...updateData };
+                                    overrides[pluginNameFromConfig] = { ...overrides[pluginNameFromConfig], ...updateData };
                                     needsSave = true;
-                                    // Apply discovered to mainEntry
                                     Object.assign(mainEntry, discovered);
+                                } else {
+                                    logInfo(`[${pluginName}] Repository metadata verification failed for ${mainEntry.name}. Skipping save.`);
                                 }
                             }
-//                            logInfo(`[Updater] Added Main row for "${pluginNameFromConfig}" (branch: main)`);
+
+                            //                            logInfo(`[Updater] Added Main row for "${pluginNameFromConfig}" (branch: main)`);
                             pluginList.push(mainEntry); // Add main entry
                         } // Skip files that are not valid modules or don't contain pluginConfig
                     } catch (err) {
@@ -921,20 +963,20 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
         // --- Phase 2: Scan plugins_data.json to add all secondary branches (branch != main) ---
         logInfo(`[Updater] Local plugins detected on disk: [${Object.keys(localPluginsInfo).join(', ')}]`);
         logInfo(`[Updater] Scanning plugins_data.json to add detected secondary branches...`);
-        
+
         const jsonEntries = Object.entries(dynamicData);
-        logInfo(`[Updater] Number of entries found in JSON file: ${jsonEntries.length}`);
+//        logInfo(`[Updater] Number of entries found in JSON file: ${jsonEntries.length}`);
 
         for (const [ovrKey, ovrData] of jsonEntries) {
-//            logInfo(`[Updater] Analyzing JSON entry: "${ovrKey}"`);
-            
+            //            logInfo(`[Updater] Analyzing JSON entry: "${ovrKey}"`);
+
             if (!ovrData || typeof ovrData !== 'object') {
-//              logInfo(`[Updater] -> Skipped entry "${ovrKey}": invalid data (null or not an object)`);
+                //              logInfo(`[Updater] -> Skipped entry "${ovrKey}": invalid data (null or not an object)`);
                 continue;
             }
 
             if (!ovrData.branch || ovrData.branch === 'main') {
-//                logInfo(`[Updater] -> Skipped entry "${ovrKey}": missing branch or set to "main"`);
+                //                logInfo(`[Updater] -> Skipped entry "${ovrKey}": missing branch or set to "main"`);
                 continue;
             }
 
@@ -949,11 +991,11 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                 if (entryByFile) {
                     logicalName = entryByFile[0];
                     localInfo = entryByFile[1];
-//                    logInfo(`[Updater] -> Match found via file: "${ovrData.localDescriptorName}" associated with "${logicalName}"`);
+                    //                    logInfo(`[Updater] -> Match found via file: "${ovrData.localDescriptorName}" associated with "${logicalName}"`);
                 }
             }
 
-//            logInfo(`[Updater] -> Branch "${ovrData.branch}" detected for "${ovrKey}". Searching for local match for: "${logicalName}"`);
+            //            logInfo(`[Updater] -> Branch "${ovrData.branch}" detected for "${ovrKey}". Searching for local match for: "${logicalName}"`);
 
             // Add the branch only if the main plugin is installed locally
             if (localInfo) {
@@ -981,7 +1023,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
             }
         }
 
-        if (needsSave) saveOverrides(dynamicData);
+        if (needsSave) saveOverrides(overrides);
 
         logInfo(`[${pluginName}] Total logical plugins found: ${pluginList.length}`);
 
@@ -992,7 +1034,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
             try {
                 const pkg = JSON.parse(fs.readFileSync(serverPkgPath, 'utf8'));
                 serverVersion = pkg.version || '0.0.0';
-            } catch (e) {}
+            } catch (e) { }
         }
 
         res.json({ plugins: pluginList, rateLimit: lastRateLimit, serverVersion });
