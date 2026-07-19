@@ -6,7 +6,10 @@ It can automatically install a new plugin, just providing the URL of its GitHub 
 You may also explore the plugin files stored on the server and directly check and modify them with the plugin editor (e.g. config files, etc). 
 - The Discord plugin page is: https://discord.com/channels/1053804249651359765/1506667363859173468/1506667363859173468
 
-<img width="826" height="378" alt="plugins list" src="https://github.com/user-attachments/assets/88d6ba0e-50e1-4ecf-aa46-64750b0aa457" />
+<img width="2392" height="1237" alt="image" src="https://github.com/user-attachments/assets/f5bc1bf5-0ac5-4210-a879-fb8896a080e3" />
+
+## Version 2.2
+- Added the ability to exclude files while updating/reinstalling. This is useful to prevent deleting already modified local files (e.g. for the Scanner plugin, to prevent deleting files like whitelist.txt or blacklist.txt). Thanks to TVCL for his suggestion
 
 ## Version 2.1
 
@@ -50,7 +53,7 @@ Follow these steps to install the plugin:
 The plugin interface is **accessible only to administrators** and nothing will appear until you're logged in as an administrator. 
 You may access it in three ways:
 
-<img width="3760" height="1745" alt="setup page" src="https://github.com/user-attachments/assets/608c376e-366e-4ca1-99a6-1d278b6c468c" />
+<img width="3159" height="1531" alt="image" src="https://github.com/user-attachments/assets/bdc62cd1-7a9b-420c-8b0d-46fd93709d8e" />
 
 **Settings - Plugins Page**. Navigate to the setup section of your webserver. In the Plugins page, at the bottom of the FM-DX-Webserver Plugin page, you will find the **Installed Plugins List**
 
@@ -97,18 +100,22 @@ You may hide this menu (and the Explore button). Select "Advanced Mode" on/off f
 - **Plugins data**: Quick access to raw configuration files `plugins_data.json` (stores the data of each installed plugin) and `pl_data.json` (stores the url of some repository).
 
 ## Execute Terminal Commands
+
+<img width="3100" height="1678" alt="image" src="https://github.com/user-attachments/assets/b81dbc1d-05b7-4791-a58a-f3a72285b829" />
+
 - This is a small terminal (bash/cmd), working on both Linux amd Windows, which allows you to send commands directly to the server
 - The available commands obviously depend on the operating system of your server (Windows/Linux).
 - On linux you can also use **"sudo" commands**
-- So, you may even try to send a restart command to the pc (e.g. "sudo reboot", "shutdown -r -t 0", etc), and if your server is set to restart automatically, you can restart pc and server this way. This is not recommended, but it may work
+- So, you may shutdown or reboot the server or send any command you want (e.g. "sudo shutdown now", "shutdown -r -t 0", "sudo reboot" etc).
 - It is also possible to store the two most used commands and, if you want, also store the sudo password. 
 - It's a very powerful feature, use it with caution!
+- Don't forget that commands are executed from within the server, while it's running
 - If you find it useful, please let me know on Discord
 
 ## Explore page
 You may hide this button (and the Advanced Tools menu). Select "Advanced Mode" on/off from the Options menu
 
-<img width="1001" height="884" alt="explore page" src="https://github.com/user-attachments/assets/f4fe85e4-57d2-4c3b-b24d-55255443ad66" />
+<img width="3033" height="1708" alt="image" src="https://github.com/user-attachments/assets/ad820295-cebf-4df6-85f5-02fa340c4202" />
 
 Clicking on "Explore" opens the Explore page.
 Select a file or a directory from the dropdown menus on the left, to browse and check files stored in the server directories **"\plugins"** and **"\plugins_configs"**
@@ -118,7 +125,9 @@ You may view the content of text files and even modify them.
 
 When you download a plugin via the Updater, a sidebar will appear with a list of the downloaded files and the skipped files. To avoid overfilling the server \plugins directory, no file outside the plugins directory is downloaded. If you want to view these files, just click on the repository link of the plugin, shown above. 
 
-## Modifying a plugin parameters or configuration file
+## Modifying a plugin parameters or a plugin configuration file
+
+<img width="3052" height="1728" alt="image" src="https://github.com/user-attachments/assets/33ee33d7-6536-434d-aee1-b63cc5061fc1" />
 
 - Click on Explore, select the **"plugins_configs"** dropdown menu
 - Click on the plugin config file (e.g. Updater.json, etc), that shows the content of the file
