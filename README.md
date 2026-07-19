@@ -100,7 +100,7 @@ You may hide this menu (and the Explore button). Select "Advanced Mode" on/off f
 - This is a small terminal (bash/cmd), working on both Linux amd Windows, which allows you to send commands directly to the server
 - The available commands obviously depend on the operating system of your server (Windows/Linux).
 - On linux you can also use **"sudo" commands**
-- So, you may even try to send a restart command to the pc (i.e. "sudo reboot", "shutdown -r -t 0", etc), and if your server is set to restart automatically, you can restart pc and server this way. This is not recommended, but it may work
+- So, you may even try to send a restart command to the pc (e.g. "sudo reboot", "shutdown -r -t 0", etc), and if your server is set to restart automatically, you can restart pc and server this way. This is not recommended, but it may work
 - It is also possible to store the two most used commands and, if you want, also store the sudo password. 
 - It's a very powerful feature, use it with caution!
 - If you find it useful, please let me know on Discord
@@ -121,7 +121,7 @@ When you download a plugin via the Updater, a sidebar will appear with a list of
 ## Modifying a plugin parameters or configuration file
 
 - Click on Explore, select the **"plugins_configs"** dropdown menu
-- Click on the plugin config file (i.e. Updater.json, etc), that shows the content of the file
+- Click on the plugin config file (e.g. Updater.json, etc), that shows the content of the file
 - Click on "Enable Editing", modify the file and save the changes
 - If the plugin has no configuration file, but has **parameters** stored in the plugin.js file itself
 - Look in the green box, click on the plugin file and edit it!
