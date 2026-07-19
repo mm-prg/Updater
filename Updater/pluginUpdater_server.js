@@ -1,10 +1,8 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.2.1)
+ * Updater Plugin for FM-DX Webserver (v. 0.2.2)
  * ************************************************
  */
-
-// branch develop
 
 "use strict";
 
@@ -230,13 +228,26 @@ async function discoverMetadataFromRepo(repoUrl, preferredBranch = null) {
  * Downloads files using the Tree data to avoid hitting GitHub API Rate Limits.
  * Uses raw.githubusercontent.com which is not rate-limited.
  */
-async function downloadFromTree(owner, repo, branch, remoteDirPath, localBaseDir, treeItems) {
+async function downloadFromTree(owner, repo, branch, remoteDirPath, localBaseDir, treeItems, skipFiles = []) {
     let downloadedFiles = [];
     const folderPrefix = remoteDirPath.endsWith('/') ? remoteDirPath : remoteDirPath + '/';
+    const skipList = Array.isArray(skipFiles)
+        ? skipFiles.map(file => file.replace(/\\/g, '/').trim()).filter(Boolean)
+        : [];
 
     for (const item of treeItems) {
         if (item.type === 'blob' && item.path.startsWith(folderPrefix)) {
             const relativePath = item.path.substring(folderPrefix.length);
+            const normalizedPath = item.path.replace(/\\/g, '/');
+            const normalizedRelative = relativePath.replace(/\\/g, '/');
+            const fileName = path.basename(relativePath);
+
+            const shouldSkip = skipList.some(skip => {
+                const normalizedSkip = skip.replace(/\\/g, '/');
+                return normalizedSkip === normalizedPath || normalizedSkip === normalizedRelative || normalizedSkip === fileName;
+            });
+            if (shouldSkip) continue;
+
             const localPath = path.join(localBaseDir, relativePath);
             const localDir = path.dirname(localPath);
 
@@ -387,7 +398,7 @@ endpointsRouter.post('/plugins/Updater/settings', express.json({ limit: '10mb' }
  */
 endpointsRouter.post('/plugins/Updater/save-override', express.json({ limit: '10mb' }), (req, res) => {
     try {
-        const { pluginName: name, repoUrl, fileUrl, localDir, branch, downloadedFiles, notDownloadedFiles, localDescriptorName } = req.body; // Merge new data with existing ones to avoid losing information
+        const { pluginName: name, repoUrl, fileUrl, localDir, branch, downloadedFiles, notDownloadedFiles, localDescriptorName, skipFiles } = req.body; // Merge new data with existing ones to avoid losing information
 
         // If the plugin has a repository URL and is not yet in repo_data.json, add it
         const rawStatic = readJsonFile(repoDataPath);
@@ -416,7 +427,8 @@ endpointsRouter.post('/plugins/Updater/save-override', express.json({ limit: '10
             ...(branch !== undefined && { branch }),
             ...(downloadedFiles !== undefined && { downloadedFiles }),
             ...(notDownloadedFiles !== undefined && { notDownloadedFiles }),
-            ...(localDescriptorName !== undefined && { localDescriptorName })
+            ...(localDescriptorName !== undefined && { localDescriptorName }),
+            ...(skipFiles !== undefined && { skipFiles })
         };
 
         if (saveOverrides(overrides)) res.json({ ok: true, rateLimit: lastRateLimit });
@@ -435,6 +447,12 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json({ limit: '10
     const { pluginName, rawBaseUrl, remoteDescriptorPath, localDescriptorName, localDir } = req.body;
     try {
         logInfo(`[Updater] Updating plugin: ${pluginName} from ${rawBaseUrl}`);
+
+        const overrides = loadOverrides();
+        const pluginOverride = overrides[pluginName] || {};
+        const skipFiles = Array.isArray(pluginOverride.skipFiles)
+            ? pluginOverride.skipFiles
+            : (typeof pluginOverride.skipFiles === 'string' ? [pluginOverride.skipFiles] : []);
 
         // Cattura l'intero branch, anche se contiene slash
         const repoMatch = rawBaseUrl.match(/github(?:usercontent)?\.com\/([^\/]+)\/([^\/]+)\/(.+)/);
@@ -468,6 +486,7 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json({ limit: '10
         downloadedList.push(remoteDescriptorPath);
 
         // Step 3: Download the contents of the specified files directory and save it locally
+        let skippedBySkipFiles = [];
         if (localDir && localDir !== "" && localDir !== ".") {
             // Build the remote path. If the descriptor is in a subdirectory (e.g. 'plugins/'),
             // the files directory is likely also located within that same subdirectory.
@@ -481,24 +500,42 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json({ limit: '10
 
             const localTargetDir = path.join(pluginsDir, localDir);
             logInfo(`[Updater] Downloading files from tree for ${remoteDirPath}...`);
-            const files = await downloadFromTree(owner, repo, branch, remoteDirPath, localTargetDir, treeItems);
+            const files = await downloadFromTree(owner, repo, branch, remoteDirPath, localTargetDir, treeItems, skipFiles);
             downloadedList = downloadedList.concat(files);
+
+            const folderPrefix = remoteDirPath.endsWith('/') ? remoteDirPath : remoteDirPath + '/';
+            skippedBySkipFiles = treeItems
+                .filter(item => item.type === 'blob' && item.path.startsWith(folderPrefix))
+                .filter(item => {
+                    const relativePath = item.path.substring(folderPrefix.length);
+                    const normalizedPath = item.path.replace(/\\/g, '/');
+                    const normalizedRelative = relativePath.replace(/\\/g, '/');
+                    const fileName = path.basename(relativePath);
+                    return skipFiles.some(skip => {
+                        const normalizedSkip = skip.replace(/\\/g, '/');
+                        return normalizedSkip === normalizedPath || normalizedSkip === normalizedRelative || normalizedSkip === fileName;
+                    });
+                })
+                .map(item => item.path);
+
+            skippedBySkipFiles = [...new Set(skippedBySkipFiles)];
         }
 
         // Step 4: Compare lists and save the metadata to new_data.json
         const notDownloadedList = allRepoFiles.filter(f => !downloadedList.includes(f));
 
-        const overrides = loadOverrides();
-        overrides[pluginName] = {
-            ...(overrides[pluginName] || {}),
+        const updateOverrides = loadOverrides();
+        updateOverrides[pluginName] = {
+            ...(updateOverrides[pluginName] || {}),
             downloadedFiles: downloadedList,
             notDownloadedFiles: notDownloadedList,
             localDescriptorName: savedDescriptorName
         };
-        saveOverrides(overrides);
+        saveOverrides(updateOverrides);
 
         // Return the summary of changes to the frontend
-        res.json({ ok: true, files: downloadedList, notDownloadedFiles: notDownloadedList, rateLimit: lastRateLimit });
+        logInfo(`[Updater] Plugin download completed for ${pluginName}. Files downloaded: ${downloadedList.length}, skippedBySkipFiles: ${skippedBySkipFiles.length}, notDownloadedFiles: ${notDownloadedList.length}`);
+        res.json({ ok: true, files: downloadedList, notDownloadedFiles: notDownloadedList, skippedBySkipFiles: skippedBySkipFiles || [], rateLimit: lastRateLimit });
     } catch (e) {
         // Log the failure and return a 500 error
         logError(`[Updater] Update failed for ${pluginName}:`, e);
@@ -548,7 +585,7 @@ endpointsRouter.get('/plugins/Updater/list-dir', (req, res) => {
  * Endpoint to save content to a file within the plugins folder
  */
 endpointsRouter.post('/plugins/Updater/save-file', express.json({ limit: '10mb' }), (req, res) => {
-    const { fileName, content, root } = req.body;
+    const { fileName, content, root, append = false } = req.body;
     if (!fileName || content === undefined) return res.status(400).send('Missing fileName or content');
 
     let baseDir = pluginsDir;
@@ -568,8 +605,13 @@ endpointsRouter.post('/plugins/Updater/save-file', express.json({ limit: '10mb' 
     try {
         const dir = path.dirname(filePath);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(filePath, content, 'utf8');
-        logInfo(`[${pluginName}] File saved: ${filePath}`);
+        if (append) {
+            fs.appendFileSync(filePath, content, 'utf8');
+            logInfo(`[${pluginName}] File appended: ${filePath}`);
+        } else {
+            fs.writeFileSync(filePath, content, 'utf8');
+            logInfo(`[${pluginName}] File saved: ${filePath}`);
+        }
         res.json({ ok: true });
     } catch (e) {
         logError(`[${pluginName}] Error saving file ${filePath}:`, e);
@@ -861,7 +903,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                             if (!nameMatch) continue;
 
                             const pluginNameFromConfig = nameMatch[1].trim();
-                            //                            logInfo(`[Updater] Local plugin detected: "${pluginNameFromConfig}" in file ${file}`);
+                            logInfo(`[Updater] Local plugin detected: "${pluginNameFromConfig}" in file ${file}`);
 
                             // Avoid re-processing the same logical plugin if it has multiple files
                             if (processedLogicalNames.has(pluginNameFromConfig)) continue;
@@ -961,7 +1003,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
         }
 
         // --- Phase 2: Scan plugins_data.json to add all secondary branches (branch != main) ---
-        logInfo(`[Updater] Local plugins detected on disk: [${Object.keys(localPluginsInfo).join(', ')}]`);
+//        logInfo(`[Updater] Local plugins detected on disk: [${Object.keys(localPluginsInfo).join(', ')}]`);
         logInfo(`[Updater] Scanning plugins_data.json to add detected secondary branches...`);
 
         const jsonEntries = Object.entries(dynamicData);

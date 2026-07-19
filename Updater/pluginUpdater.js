@@ -4,16 +4,16 @@
  * ************************************************
  */
 
-// branch develop
 
 "use strict";
 
 (async () => {
-    const pluginVersion = '0.2.1';
+    const pluginVersion = '0.2.2';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg';
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
     let sortTimeout = null;
+    const MAX_VERSION_CHECK_ATTEMPTS = 3;
 
     // Resolve the owner: priority to specific override, then author override, then author, finally default
     function resolveOwner(p, allPlugins) {
@@ -46,16 +46,15 @@
         return false;
     }
 
-    // Updates the version tag with GitHub API rate limit info
     function updateRateLimitDisplay(rateLimit) {
         const tag = document.getElementById('updater-version-tag');
         if (tag && rateLimit && rateLimit.remaining != null) {
-            tag.textContent = `v${pluginVersion} (api left ${rateLimit.remaining})`;
-            // Change color if running low
             const remaining = typeof rateLimit.remaining === 'number' ? rateLimit.remaining : parseInt(rateLimit.remaining);
-            if (remaining < 10) tag.style.color = '#fe0830';
-            else if (remaining < 30) tag.style.color = '#ffaa00';
-            else tag.style.color = '#777';
+            let color = '#fff';
+            if (remaining < 10) color = '#fe0830';
+            else if (remaining < 30) color = '#ffaa00';
+
+            tag.innerHTML = `v${pluginVersion} (<strong style="color: ${color}; font-size: 14px; font-weight: bold;" title="Number of remaining GitHub API calls (resets after one hour)">api left ${rateLimit.remaining}</strong>)`;
         }
     }
 
@@ -77,7 +76,7 @@
             // If filePath is a complete URL (e.g., pastebin), we use it directly
             const url = filePath.startsWith('http') ? filePath : `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`;
 
-            // rds-ai-decoder.js uses cache: 'no-store' and a timestamp to avoid browser/proxy cache
+            // Uses cache: 'no-store' and a timestamp to avoid browser/proxy cache
             const res = await fetch(url + '?t=' + Date.now(), { cache: 'no-store' });
             if (!res.ok) return null;
             const text = await res.text();
@@ -92,6 +91,7 @@
 
     async function initUpdater() {
         let currentPlugins = [];
+        let isListLoaded = false;
 
         // Retrieve settings from the server (default advancedMode: true)
         let settings = { showInPluginPanel: true, showInHeader: true, showInSetup: true, advancedMode: true, customButtons: [] };
@@ -199,7 +199,7 @@
                     <a href="https://github.com/mm-prg/Updater" target="_blank" class="updater-btn" style="background:#333; color:#fff; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; width:32px; padding:6px;" title="Updater Repository"><i class="fa-solid fa-circle-question"></i></a>
                     <button id="updater-config-btn" class="updater-btn" style="background:#333; color:#fff; display:${settings.advancedMode ? 'inline-flex' : 'none'}; align-items:center; justify-content:center; width:32px; padding:6px;" title="Advanced Tools"><i class="fa-solid fa-screwdriver-wrench"></i></button>
                     <button id="updater-options-btn" class="updater-btn" style="background:#333; color:#fff; display:inline-flex; align-items:center; justify-content:center; width:32px; padding:6px;" title="Options"><i class="fa-solid fa-gear"></i></button>
-                    <span id="updater-version-tag" style="color: #777; font-size: 11px;">v${pluginVersion} (api left ?)</span>
+                    <span id="updater-version-tag" style="color: #777; font-size: 14px;">v${pluginVersion} (<strong style="color: #fff; font-size: 14px; font-weight: bold;" title="Number of remaining GitHub API calls (resets after one hour)">api left ?</strong>)</span>
                 </div>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
@@ -294,6 +294,10 @@
                         const isVisible = modalContainer.style.display === 'block';
                         modalContainer.style.display = isVisible ? 'none' : 'block';
                         if (overlay) overlay.style.display = isVisible ? 'none' : 'block';
+
+                        if (!isVisible && !isListLoaded) {
+                            alert("The local plugin list is not ready yet. Please try again in a few seconds.");
+                        }
                     };
                 } else if (attempts < 30) {
                     setTimeout(() => tryAdd(attempts + 1), 300);
@@ -358,6 +362,10 @@
                     const isVisible = modalContainer.style.display === 'block';
                     modalContainer.style.display = isVisible ? 'none' : 'block';
                     if (overlay) overlay.style.display = isVisible ? 'none' : 'block';
+
+                    if (!isVisible && !isListLoaded) {
+                        alert("The local plugin list is not ready yet. Please try again in a few seconds.");
+                    }
                 };
             };
             tryAddHeader();
@@ -430,8 +438,17 @@
         }
 
         async function checkUpdate(p, allPlugins) {
+            p.versionCheckAttempts = (p.versionCheckAttempts || 0) + 1;
             const remoteVer = await getRemoteVersion(p, allPlugins);
             p.cachedRemoteVer = remoteVer;
+            if (remoteVer) {
+                p.versionCheckAttempts = 0;
+                p.versionCheckStopped = false;
+            } else {
+                if (p.versionCheckAttempts >= MAX_VERSION_CHECK_ATTEMPTS) {
+                    p.versionCheckStopped = true;
+                }
+            }
 
             // If the check was successful (version found) and we had no saved parameters,
             // store the automatically detected values in plugins_data.json for future runs.
@@ -511,13 +528,21 @@
                 const data = await response.json();
                 const newList = data.plugins || data;
 
-                // Preserve dynamic data (like cached remote version) to maintain Status sorting
+                // Preserve dynamic data (like cached remote version) to maintain Status sorting,
+                // but reset the retry state for plugins when the list is freshly loaded.
                 newList.forEach(np => {
                     const old = currentPlugins.find(p => p.name === np.name);
-                    if (old) np.cachedRemoteVer = old.cachedRemoteVer;
+                    if (old) {
+                        if (old.cachedRemoteVer !== null && old.cachedRemoteVer !== undefined) {
+                            np.cachedRemoteVer = old.cachedRemoteVer;
+                        }
+                        np.versionCheckAttempts = 0;
+                        np.versionCheckStopped = false;
+                    }
                 });
 
                 currentPlugins = newList;
+                isListLoaded = true;
                 if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
                 sortPlugins(sortState.key, false);
                 const status = document.getElementById('updater-status');
@@ -593,25 +618,13 @@
                 const data = await res.json();
                 if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
                 if (data.ok) {
-                    // If the update succeeded, save the list of modified files to the local configuration
-                    if (data.files || data.notDownloadedFiles) {
-                        try {
-                            await fetch('/plugins/Updater/save-override', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    pluginName: (p.branch && p.branch !== 'main') ? p.name : (p.logicalName || p.name),
-                                    downloadedFiles: data.files,
-                                    notDownloadedFiles: data.notDownloadedFiles
-                                })
-                            });
-                        } catch (e) { }
-                    }
+                    // The server already persists the downloaded file metadata, so avoid resending the lists.
                     // Construct a detailed summary message for the user
                     const fileList = data.files ? `\n\nDownloaded files:\n- ${data.files.join('\n- ')}` : '';
+                    const excludedList = data.skippedBySkipFiles?.length > 0 ? `\n\nExcluded by skipFiles:\n- ${data.skippedBySkipFiles.join('\n- ')}` : '';
                     const skipList = data.notDownloadedFiles?.length > 0 ? `\n\nSkipped files (not downloaded):\n- ${data.notDownloadedFiles.join('\n- ')}` : '';
                     const postUpdateMsg = "\n\nAfter the plugin update, you must:\n1) Clear the browser cache;\n2) Restart the server, if necessary.";
-                    alert(`${p.name} updated successfully!${postUpdateMsg}${fileList}${skipList}`);
+                    alert(`${p.name} updated successfully!${postUpdateMsg}${fileList}${excludedList}${skipList}`);
                     await refreshList();
                 } else {
                     // Notify user of server-side failure and restore previous status
@@ -698,6 +711,11 @@
                     <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:12px; font-weight:bold;">Local Directory (relative to plugins/)</label>
                         <input type="text" id="edit-local-dir" value="${p.localDir || ''}" placeholder="e.g. MyPluginDir" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
+                    </div>
+                    <div style="margin-bottom:15px;">
+                        <label style="display:block; font-size:12px; font-weight:bold;">Files to skip during update/reinstall</label>
+                        <textarea id="edit-skip-files" placeholder="Enter one file name or path per line, e.g. LICENSE or docs/readme.md" style="width:100%; min-height:80px; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">${(p.skipFiles || []).join('\n')}</textarea>
+                        <p style="font-size:11px; color:#666; margin:6px 0 0;">Separate each file with a new line. Paths are matched against the repository file path and the local relative path.</p>
                     </div>
                     <div style="display:flex; justify-content:flex-end; gap:10px;">
                         <button id="cancel-edit" style="padding:8px 15px; border:none; background:#eee; cursor:pointer; border-radius:4px;">Cancel</button>
@@ -793,10 +811,8 @@
                 const repoUrl = modal.querySelector('#edit-repo-url').value.trim();
                 const fileUrl = modal.querySelector('#edit-file-path').value.trim();
                 const localDir = modal.querySelector('#edit-local-dir').value.trim();
+                const skipFiles = modal.querySelector('#edit-skip-files').value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
                 const branch = calculatedBranch;
-
-                if (!repoUrl || !fileUrl || !localDir) return alert("All three fields are required.");
-
                 let targetPluginName = (p.branch && p.branch !== 'main') ? p.name : (p.logicalName || p.name);
                 let targetLocalDir = localDir;
                 let targetDescriptorName = (p.fileName || fileUrl).split(/[\\/]/).pop();
@@ -811,6 +827,7 @@
                             fileUrl: fileUrl,
                             localDir: targetLocalDir,
                             branch: branch,
+                            skipFiles,
                             localDescriptorName: targetDescriptorName
                         })
                     });
@@ -870,6 +887,11 @@
                     <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">Local Directory (relative to plugins/)</label>
                         <input type="text" id="add-local-dir" placeholder="e.g. FavStations" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
+                    </div>
+                    <div style="margin-bottom:15px;">
+                        <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">Files to skip during update/reinstall</label>
+                        <textarea id="add-skip-files" placeholder="Enter one file name or path per line, e.g. LICENSE or docs/readme.md" style="width:100%; min-height:80px; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;"></textarea>
+                        <p style="font-size:11px; color:#666; margin:6px 0 0;">Separate each file with a new line. Paths are matched against the repository file path and the local relative path.</p>
                     </div>
                     <div style="display:flex; justify-content:flex-end; gap:10px;">
                         <button id="cancel-add" style="padding:8px 15px; border:none; background:#eee; cursor:pointer; border-radius:4px;">Cancel</button>
@@ -1003,6 +1025,7 @@
                 const repoUrl = modal.querySelector('#add-repo-url').value.trim();
                 const manualFilePath = modal.querySelector('#add-file-path').value.trim();
                 const localDir = modal.querySelector('#add-local-dir').value.trim();
+                const skipFiles = modal.querySelector('#add-skip-files').value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
                 const branch = calculatedBranch;
 
                 // Basic validation to ensure all required fields are populated
@@ -1069,6 +1092,7 @@
                                 fileUrl: foundFileUrl,
                                 localDir: targetLocalDir,
                                 branch: 'main',
+                                skipFiles,
                                 localDescriptorName: targetDescriptorName
                             })
                         });
@@ -1089,6 +1113,7 @@
                             fileUrl: foundFileUrl,
                             localDir: targetLocalDir,
                             branch: branch,
+                            skipFiles,
                             localDescriptorName: targetDescriptorName
                         })
                     });
@@ -1114,18 +1139,6 @@
 
                         const updateData = await updateRes.json();
                         if (updateData.rateLimit) updateRateLimitDisplay(updateData.rateLimit);
-                        if (updateData.ok && (updateData.files || updateData.notDownloadedFiles)) {
-                            // Step 3: Record the list of downloaded files for future management/viewing
-                            await fetch('/plugins/Updater/save-override', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    pluginName: targetPluginName,
-                                    downloadedFiles: updateData.files,
-                                    notDownloadedFiles: updateData.notDownloadedFiles
-                                })
-                            }).catch(() => { });
-                        }
 
                         // Update rate limit display after the second save-override call
                         if (updateData.rateLimit) updateRateLimitDisplay(updateData.rateLimit);
@@ -1133,9 +1146,10 @@
                         // Success: close modal, show summary, and refresh the plugin list
                         overlay.remove();
                         const fileList = updateData.files ? `\n\nDownloaded files:\n- ${updateData.files.join('\n- ')}` : '';
+                        const excludedList = updateData.skippedBySkipFiles?.length > 0 ? `\n\nExcluded by skipFiles:\n- ${updateData.skippedBySkipFiles.join('\n- ')}` : '';
                         const skipList = updateData.notDownloadedFiles?.length > 0 ? `\n\nSkipped files (not downloaded):\n- ${updateData.notDownloadedFiles.join('\n- ')}` : '';
                         const postInstallMsg = "\n\nAfter loading a new plugin, you must also:\n1) In the fm-dx-webserver setup plugins page, activate the plugin;\n2) Save the new configuration;\n3) Clear the browser cache;\n4) Restart the server, if necessary.";
-                        alert(`Plugin "${targetPluginName}" added and installed successfully!${postInstallMsg}${fileList}${skipList}`);
+                        alert(`Plugin "${targetPluginName}" added and installed successfully!${postInstallMsg}${fileList}${excludedList}${skipList}`);
                         await refreshList();
                     } else {
                         alert("Error saving plugin.");
@@ -1571,6 +1585,41 @@
             uploadBtn.style.cssText = 'width:100%; height:32px; line-height:32px; padding:0 10px; margin-bottom:15px; border:none; background:#3fa9f5; color:#fff; cursor:pointer; border-radius:4px; font-weight:bold; font-size:13px; flex-shrink:0; display:block;';
             sidebar.insertBefore(uploadBtn, pluginsSection.btn);
 
+            const MAX_UPLOAD_CHUNK_BYTES = 900 * 1024;
+            const fileUploaderEncoder = new TextEncoder();
+
+            const uploadFileInChunks = async (targetPath, content, root) => {
+                const totalBytes = fileUploaderEncoder.encode(content).length;
+                const sendChunk = async (chunk, append) => {
+                    return fetch('/plugins/Updater/save-file', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fileName: targetPath, content: chunk, root, append })
+                    });
+                };
+
+                if (totalBytes <= MAX_UPLOAD_CHUNK_BYTES) {
+                    return sendChunk(content, false);
+                }
+
+                let position = 0;
+                let chunkIndex = 0;
+                while (position < content.length) {
+                    let end = Math.min(content.length, position + MAX_UPLOAD_CHUNK_BYTES);
+                    let chunk = content.slice(position, end);
+                    while (fileUploaderEncoder.encode(chunk).length > MAX_UPLOAD_CHUNK_BYTES) {
+                        chunk = chunk.slice(0, -1);
+                    }
+
+                    const res = await sendChunk(chunk, chunkIndex > 0);
+                    if (!res.ok) return res;
+
+                    position += chunk.length;
+                    chunkIndex += 1;
+                }
+                return { ok: true };
+            };
+
             uploadBtn.onclick = () => {
                 const fileInput = document.createElement('input');
                 fileInput.type = 'file';
@@ -1595,11 +1644,7 @@
                     reader.onload = async (event) => {
                         const content = event.target.result;
                         try {
-                            const res = await fetch('/plugins/Updater/save-file', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ fileName: finalPath, content: content, root: currentRoot })
-                            });
+                            const res = await uploadFileInChunks(finalPath, content, currentRoot);
                             if (res.ok) {
                                 alert('File uploaded successfully!');
                                 const activeContainer = currentRoot === 'configs' ? configsSection.container : pluginsSection.container;
@@ -2153,10 +2198,11 @@
 
                 tbody.appendChild(li);
 
-                if (p.cachedRemoteVer !== undefined) {
-                    updateStatusCell(p, p.cachedRemoteVer, currentPlugins);
-                } else {
+                const attempts = p.versionCheckAttempts || 0;
+                if ((p.cachedRemoteVer === undefined || p.cachedRemoteVer === null) && !p.versionCheckStopped && attempts < MAX_VERSION_CHECK_ATTEMPTS) {
                     checkUpdate(p, currentPlugins);
+                } else {
+                    updateStatusCell(p, p.cachedRemoteVer, currentPlugins);
                 }
             });
         }
@@ -2206,6 +2252,7 @@
             if (!response.ok) throw new Error('Fetch error');
             const data = await response.json();
             currentPlugins = data.plugins || data;
+            isListLoaded = true;
             if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
 
             const status = document.getElementById('updater-status');
