@@ -50,7 +50,8 @@ Follow these steps to install the plugin:
 
 ## Usage
 
-The plugin interface is **accessible only to administrators** and nothing will appear until you're logged in as an administrator. 
+The plugin interface is **accessible only to administrators** and nothing will appear until you're logged in as an administrator.
+All `/plugins/Updater/*` backend routes also enforce the authenticated FM-DX administrator session server-side. This protects update, file-management, deletion, and terminal operations even when an endpoint is called directly without using the interface.
 You may access it in three ways:
 
 <img width="3159" height="1531" alt="image" src="https://github.com/user-attachments/assets/bdc62cd1-7a9b-420c-8b0d-46fd93709d8e" />
