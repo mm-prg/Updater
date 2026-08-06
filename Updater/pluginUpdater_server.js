@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.2.2)
+ * Updater Plugin for FM-DX Webserver (v. 0.2.3dev)
  * ************************************************
  */
 
@@ -30,12 +30,14 @@ const serverStartTime = Date.now();
 const repoDataPath = path.join(__dirname, 'repo_data.json'); // Static file (known)
 const overridesPath = path.join(__dirname, 'plugins_data.json'); // Dynamic file (new/modified)
 const settingsPath = path.join(configsDir, 'Updater.json'); // Global options file
+const pluginStatesPath = path.join(configsDir, 'plugin-states.json'); // Per-plugin enable/disable state
 
 // Ensure the settings directory exists
 if (!fs.existsSync(configsDir)) fs.mkdirSync(configsDir, { recursive: true });
 // Ensure the plugins_data.json file exists to avoid read/write errors
 if (!fs.existsSync(overridesPath)) fs.writeFileSync(overridesPath, JSON.stringify({}, null, 2), 'utf8');
 if (!fs.existsSync(repoDataPath)) fs.writeFileSync(repoDataPath, JSON.stringify({}, null, 2), 'utf8');
+if (!fs.existsSync(pluginStatesPath)) fs.writeFileSync(pluginStatesPath, JSON.stringify({}, null, 2), 'utf8');
 
 // Increase payload limit for the core server endpoint /data_plugins
 // to prevent 413 errors when saving a long list of plugins.
@@ -57,6 +59,20 @@ function readJsonFile(filePath) {
     } catch (e) {
         logError(`[${pluginName}] Error reading ${path.basename(filePath)}:`, e);
         return {};
+    }
+}
+
+function readPluginStates() {
+    return readJsonFile(pluginStatesPath);
+}
+
+function savePluginStates(states) {
+    try {
+        fs.writeFileSync(pluginStatesPath, JSON.stringify(states || {}, null, 2), 'utf8');
+        return true;
+    } catch (e) {
+        logError(`[${pluginName}] Error saving plugin states to ${pluginStatesPath}:`, e);
+        return false;
     }
 }
 
@@ -389,6 +405,27 @@ endpointsRouter.post('/plugins/Updater/settings', express.json({ limit: '10mb' }
         res.json({ ok: true });
     } catch (e) {
         logError(`[${pluginName}] Error saving settings to ${settingsPath}:`, e);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+/**
+ * Endpoint to persist a plugin's enabled/disabled state.
+ */
+endpointsRouter.post('/plugins/Updater/plugin-state', express.json({ limit: '10mb' }), (req, res) => {
+    try {
+        const pluginName = req.body?.pluginName;
+        const enabled = req.body?.enabled;
+        if (!pluginName || typeof enabled !== 'boolean') {
+            return res.status(400).json({ ok: false, error: 'pluginName and enabled are required' });
+        }
+
+        const states = readPluginStates();
+        states[pluginName] = enabled;
+        const saved = savePluginStates(states);
+        res.json({ ok: saved });
+    } catch (e) {
+        logError(`[${pluginName}] Error saving plugin state:`, e);
         res.status(500).json({ ok: false, error: e.message });
     }
 });
@@ -877,6 +914,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
         };
 
         const overrides = loadOverrides();
+        const pluginStates = readPluginStates();
         let needsSave = false;
 
         const processedLogicalNames = new Set();
@@ -940,6 +978,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                                 fullPath: filePath,
                                 localDescriptorName: localDescriptorName, // Store for matching
                                 logicalName: pluginNameFromConfig,
+                                isEnabled: pluginStates[pluginNameFromConfig] ?? pluginStates[localDescriptorName] ?? true,
                                 // Default branch for this entry is 'main'
                                 branch: 'main',
                                 hasStaleFiles: hasStaleFiles, // Add this new property
@@ -1046,6 +1085,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                     ...localInfo.config,
                     name: ovrKey,
                     logicalName: logicalName,
+                    isEnabled: pluginStates[logicalName] ?? pluginStates[localInfo.localDescriptorName] ?? true,
                     fileName: localInfo.localDescriptorName,
                     fullPath: localInfo.filePath,
                     localDescriptorName: localInfo.localDescriptorName,

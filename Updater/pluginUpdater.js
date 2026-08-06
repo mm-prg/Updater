@@ -8,12 +8,178 @@
 "use strict";
 
 (async () => {
-    const pluginVersion = '0.2.2';
+    const pluginVersion = '0.2.3dev';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg';
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
     let sortTimeout = null;
     const MAX_VERSION_CHECK_ATTEMPTS = 3;
+    const descriptionPluginBarState = { initialized: false, wrapper: null, scrollArea: null, observer: null };
+
+    function injectDescriptionPluginBarStyles() {
+        if (document.getElementById('updater-description-plugin-bar-styles')) return;
+
+        const style = document.createElement('style');
+        style.id = 'updater-description-plugin-bar-styles';
+        style.textContent = `
+            .updater-plugin-desc-wrapper {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                margin-top: 10px;
+                padding-top: 6px;
+                border-top: 1px solid rgba(255,255,255,0.08);
+            }
+            .updater-plugin-desc-scroll-area {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 6px;
+                flex: 1;
+            }
+            .updater-plugin-desc-scroll-area > * {
+                flex-shrink: 0;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    function closeServerDescriptionPage() {
+        const descPanel = document.getElementById('dashboard-panel-description');
+        if (!descPanel) return;
+
+        // 1. Try finding explicit close button inside or associated with the description panel
+        const closeBtn = descPanel.querySelector('.close, .close-button, .btn-close, .modal-close, [data-dismiss], [data-bs-dismiss], .fa-xmark, .fa-times, button[title*="Close" i], button[aria-label*="Close" i], [onclick*="close"], [onclick*="toggle"]');
+        if (closeBtn && typeof closeBtn.click === 'function') {
+            closeBtn.click();
+            return;
+        }
+
+        // 2. Try parent modal/wrapper close button or hiding the modal
+        const modalContainer = descPanel.closest('.modal, .modal-container, .popup, .overlay-container, .dashboard-modal, [role="dialog"]');
+        if (modalContainer) {
+            const modalCloseBtn = modalContainer.querySelector('.close, .close-button, .btn-close, [data-dismiss], .fa-xmark, .fa-times, button[title*="Close" i]');
+            if (modalCloseBtn && typeof modalCloseBtn.click === 'function') {
+                modalCloseBtn.click();
+                return;
+            }
+            modalContainer.classList.remove('show', 'active', 'open', 'visible', 'is-open');
+            modalContainer.style.display = 'none';
+        }
+
+        // 3. Try window/global helper functions if available
+        if (typeof window.closeServerDescription === 'function') {
+            window.closeServerDescription();
+            return;
+        }
+        if (typeof window.toggleServerDescription === 'function') {
+            window.toggleServerDescription();
+            return;
+        }
+        if (typeof window.hideServerDescription === 'function') {
+            window.hideServerDescription();
+            return;
+        }
+
+        // 4. Hide/close description panel itself
+        descPanel.classList.remove('show', 'active', 'open', 'visible', 'is-open');
+        if (descPanel.style.display && descPanel.style.display !== 'none') {
+            descPanel.style.display = 'none';
+        }
+
+        // 5. Hide any modal backdrop
+        document.querySelectorAll('.modal-backdrop, .description-overlay, .server-desc-backdrop').forEach(el => {
+            el.classList.remove('show', 'active', 'open');
+            el.style.display = 'none';
+        });
+
+        // 6. Click any toggle button if panel is still displayed
+        const toggleBtn = document.querySelector('#server-description-btn, #btn-server-desc, #server-desc-toggle, #description-toggle-btn, [data-action="toggle-description"]');
+        if (toggleBtn && (descPanel.offsetHeight > 0 || descPanel.classList.contains('show') || descPanel.classList.contains('active'))) {
+            toggleBtn.click();
+        }
+    }
+
+    function mirrorButtonIntoDescriptionBar(button) {
+        if (!button || !(button instanceof Element) || !descriptionPluginBarState.scrollArea) return;
+        const mirrorKey = button.getAttribute('data-updater-desc-anchor') || button.id;
+        if (!mirrorKey) return;
+
+        const existingMirror = descriptionPluginBarState.scrollArea.querySelector(`[data-updater-desc-anchor="${mirrorKey}"]`);
+        if (existingMirror) return;
+
+        const clone = button.cloneNode(true);
+        clone.removeAttribute('id');
+        clone.setAttribute('data-updater-desc-anchor', mirrorKey);
+        clone.setAttribute('aria-label', button.getAttribute('aria-label') || button.title || button.textContent || 'Plugin');
+        clone.removeAttribute('onclick');
+        clone.style.pointerEvents = 'auto';
+
+        clone.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            closeServerDescriptionPage();
+            if (typeof button.click === 'function') {
+                button.click();
+            }
+        });
+
+        descriptionPluginBarState.scrollArea.appendChild(clone);
+    }
+
+    function ensureDescriptionPluginBar() {
+        if (descriptionPluginBarState.initialized) return;
+        descriptionPluginBarState.initialized = true;
+
+        injectDescriptionPluginBarStyles();
+
+        const target = document.getElementById('dashboard-panel-description');
+        if (!target) return;
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'updater-plugin-desc-wrapper';
+
+        const scrollArea = document.createElement('div');
+        scrollArea.className = 'updater-plugin-desc-scroll-area';
+        scrollArea.setAttribute('role', 'toolbar');
+        scrollArea.setAttribute('aria-label', 'Plugin shortcuts');
+
+        wrapper.appendChild(scrollArea);
+        target.appendChild(wrapper);
+
+        descriptionPluginBarState.wrapper = wrapper;
+        descriptionPluginBarState.scrollArea = scrollArea;
+
+        const mainBar = document.querySelector('.scrollable-container');
+        if (mainBar) {
+            Array.from(mainBar.children).forEach((child) => mirrorButtonIntoDescriptionBar(child));
+
+            descriptionPluginBarState.observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    mutation.addedNodes.forEach((node) => {
+                        if (node instanceof Element) {
+                            if (node.matches('button, a, div')) {
+                                mirrorButtonIntoDescriptionBar(node);
+                            }
+                            node.querySelectorAll('button, a, div').forEach((childNode) => mirrorButtonIntoDescriptionBar(childNode));
+                        }
+                    });
+
+                    mutation.removedNodes.forEach((node) => {
+                        if (node instanceof Element) {
+                            const mirrorKey = node.getAttribute('id') || node.getAttribute('data-updater-desc-anchor');
+                            if (mirrorKey) {
+                                const mirror = descriptionPluginBarState.scrollArea?.querySelector(`[data-updater-desc-anchor="${mirrorKey}"]`);
+                                if (mirror) mirror.remove();
+                            }
+                        }
+                    });
+                });
+            });
+
+            descriptionPluginBarState.observer.observe(mainBar, { childList: true, subtree: true });
+        }
+    }
 
     // Resolve the owner: priority to specific override, then author override, then author, finally default
     function resolveOwner(p, allPlugins) {
@@ -139,13 +305,15 @@
         styleBlock.textContent = `
             .updater-card { background: #222; padding: 15px; border-radius: 6px; border: 1px solid #333; margin-bottom: 20px; color: #ddd; box-sizing: border-box; text-align: left; }
             .updater-list { list-style: none; padding: 0; margin: 0; box-sizing: border-box; }
-            .updater-list-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-left: 3px solid #3fa9f5; background: #1a1a1a; margin-bottom: 8px; border-radius: 4px; color: #ddd; transition: background 0.2s; box-sizing: border-box; }
+            .updater-list-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-left: 3px solid #3fa9f5; background: #1a1a1a; margin-bottom: 8px; border-radius: 4px; color: #ddd; transition: background 0.2s; box-sizing: border-box; min-height: 48px; }
             .updater-list-item:hover { background: #262626; }
-            .updater-btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; transition: opacity 0.2s; }
-            .updater-btn:hover { opacity: 0.8; }
-            .updater-btn-primary { background: #3fa9f5; color: #000; }
-            .updater-btn-danger { background: #fe0830; color: #fff; }
-            .updater-btn-small { padding: 4px 8px; font-size: 10px; }
+            .updater-btn { display: inline-flex !important; align-items: center !important; justify-content: center !important; padding: 4px 8px !important; border: none !important; border-radius: 4px !important; cursor: pointer !important; font-size: 11px !important; font-weight: bold !important; transition: opacity 0.2s !important; text-decoration: none !important; white-space: nowrap !important; width: auto !important; height: auto !important; min-width: 0 !important; max-width: none !important; flex: 0 0 auto !important; box-sizing: border-box !important; line-height: 1.2 !important; margin: 0 !important; }
+            .updater-btn:hover { opacity: 0.85 !important; }
+            .updater-btn-primary { background: #3fa9f5 !important; color: #000 !important; }
+            .updater-btn-danger { background: #fe0830 !important; color: #fff !important; }
+            .updater-btn-small { display: inline-flex !important; align-items: center !important; justify-content: center !important; padding: 3px 6px !important; font-size: 10px !important; height: 22px !important; line-height: 1 !important; white-space: nowrap !important; width: auto !important; flex: 0 0 auto !important; margin: 0 !important; box-sizing: border-box !important; }
+            .actions-container { display: flex !important; gap: 3px !important; align-items: center !important; flex-wrap: nowrap !important; justify-content: flex-end !important; width: auto !important; min-width: 0 !important; }
+            .actions-container button, .actions-container a { display: inline-flex !important; align-items: center !important; justify-content: center !important; width: auto !important; height: 22px !important; flex: 0 0 auto !important; margin: 0 !important; padding: 3px 6px !important; font-size: 10px !important; box-sizing: border-box !important; line-height: 1 !important; white-space: nowrap !important; }
             .updater-title { color: #fff; margin: 0; font-size: 1.2em; font-weight: bold; box-sizing: border-box; }
             .updater-subtitle { color: #aaa; font-size: 0.85em; margin-top: 2px; }
             .updater-sort-link { color: #3fa9f5; cursor: pointer; text-decoration: none; font-size: 11px; margin-right: 0; box-sizing: border-box; }
@@ -212,13 +380,13 @@
             
             <div id="updater-sort-controls" class="updater-list-item" style="background: transparent; border-left-color: transparent; border-bottom: 1px solid #333; border-radius: 0; margin-bottom: 10px; padding-top: 0; padding-bottom: 5px; opacity: 0.8; font-weight: bold; text-transform: uppercase; cursor: default; text-align: left;">
                 <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden; min-width: 0;">
-                    <div class="updater-sort-link" data-sort="name" style="flex: 0 0 28%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Name ↕</div>
-                    <div class="updater-sort-link" data-sort="author" style="flex: 0 0 18%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Author ↕</div>
-                    <div style="flex: 0 0 7%; color: #3fa9f5; font-size: 11px; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; box-sizing: border-box;">Local</div>
-                    <div style="flex: 0 0 9%; color: #3fa9f5; font-size: 11px; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; box-sizing: border-box;">GitHub</div>
+                    <div class="updater-sort-link" data-sort="name" style="flex: 0 0 24%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Name ↕</div>
+                    <div class="updater-sort-link" data-sort="author" style="flex: 0 0 15%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Author ↕</div>
+                    <div style="flex: 0 0 6%; color: #3fa9f5; font-size: 11px; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; box-sizing: border-box;">Local</div>
+                    <div style="flex: 0 0 8%; color: #3fa9f5; font-size: 11px; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; box-sizing: border-box;">GitHub</div>
                     <div class="updater-sort-link" data-sort="status" style="flex: 1; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Status ↕</div>
                 </div>
-                <div style="width: 160px; flex-shrink: 0; margin-left: 10px; display: flex;"></div>
+                <div style="min-width: 320px; flex-shrink: 0; margin-left: 10px; display: flex; justify-content: flex-end;"></div>
             </div>
 
             <ul id="updater-list-body" class="updater-list"></ul>
@@ -256,6 +424,8 @@
                 overlay.style.display = 'none';
             };
         }
+        ensureDescriptionPluginBar();
+
         // Create the button to open the plugin list on the main page
         // This button is created only if we are not on the setup page.
         if (!isOnSetupPage) {
@@ -426,7 +596,6 @@
                         btn.textContent = label;
                         btn.style.background = isUpdate ? '#fe0830' : '#444';
                         btn.style.color = '#fff';
-                        btn.style.marginRight = '4px';
                         btn.title = isUpdate ? `Update ${branch} to ${remoteVer}` : `Reinstall current version from ${branch}`;
                         btn.onclick = () => performUpdate(p, branch);
                         return btn;
@@ -691,35 +860,35 @@
 
         function openEditModal(p, allPlugins) {
             const overlay = document.createElement('div');
-            overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:100000; display:flex; align-items:center; justify-content:center; color:#000;';
+            overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:100000; display:flex; align-items:center; justify-content:center; padding:20px; color:#eee;';
 
             const modal = document.createElement('div');
-            modal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:450px; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
+            modal.style.cssText = 'background:#161616; padding:26px; border-radius:12px; width:100%; max-width:540px; box-shadow:0 18px 40px rgba(0,0,0,0.6); border:1px solid #00ff00; color:#eee; font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size:14px; line-height:1.6;';
             let calculatedBranch = p.branch || 'main';
 
             modal.innerHTML = `
-                    <h3 style="margin-top:0;">Edit GitHub Data for <b>${p.name}</b></h3>
-                    <p style="font-size:12px; color:#666; margin-bottom:15px;">Enter the GitHub URL and click Verify to auto-fill details.</p>
+                    <h3 style="margin:0 0 6px 0; font-size:1.4em; color:#fff;">Edit GitHub Data for <b style="color:#00ff00;">${p.name}</b></h3>
+                    <p style="font-size:13px; color:#aaa; margin-top:0; margin-bottom:18px;">Enter the GitHub URL and click Verify to auto-fill details.</p>
                     <div style="margin-bottom:15px;">
-                        <label style="display:block; font-size:12px; font-weight:bold;">GitHub Repository URL</label>
-                        <div style="display:flex; gap:5px;"><input type="text" id="edit-repo-url" value="${p.repoUrl || (p.githubOwner && p.githubRepo ? `https://github.com/${p.githubOwner}/${p.githubRepo}` : '')}" placeholder="https://github.com/${resolveOwner(p, allPlugins)}/${p.name.replace(/\s+/g, '-')}" style="flex-grow:1; min-width:0; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;"><button id="verify-repo-btn" style="width:34px; height:34px; background:#00ccff; border:none; border-radius:4px; cursor:pointer; font-size:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center;" title="Verify repository contents"><i class="fa-solid fa-magnifying-glass"></i></button></div>
+                        <label style="display:block; font-size:12px; font-weight:bold; color:#ccc; margin-bottom:6px;">GitHub Repository URL</label>
+                        <div style="display:flex; gap:8px;"><input type="text" id="edit-repo-url" value="${p.repoUrl || (p.githubOwner && p.githubRepo ? `https://github.com/${p.githubOwner}/${p.githubRepo}` : '')}" placeholder="https://github.com/${resolveOwner(p, allPlugins)}/${p.name.replace(/\s+/g, '-')}" style="flex-grow:1; min-width:0; padding:10px 12px; box-sizing:border-box; background:#1c1c1c; border:1px solid #00ff00; border-radius:8px; color:#fff; font-size:14px;"><button id="verify-repo-btn" style="width:40px; height:40px; background:#3fa9f5; border:none; border-radius:8px; cursor:pointer; font-size:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center; color:#000;" title="Verify repository contents"><i class="fa-solid fa-magnifying-glass"></i></button></div>
                     </div>
                     <div style="margin-bottom:15px;">
-                        <label style="display:block; font-size:12px; font-weight:bold;">Descriptive File Path / URL (.js)</label>
-                        <input type="text" id="edit-file-path" value="${p.fileUrl || p.githubPath || ''}" placeholder="${p.fileName || p.frontEndPath || 'plugin.js'}" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
+                        <label style="display:block; font-size:12px; font-weight:bold; color:#ccc; margin-bottom:6px;">Descriptor File Path / URL (.js)</label>
+                        <input type="text" id="edit-file-path" value="${p.fileUrl || p.githubPath || ''}" placeholder="${p.fileName || p.frontEndPath || 'plugin.js'}" style="width:100%; padding:10px 12px; box-sizing:border-box; background:#1c1c1c; border:1px solid #00ff00; border-radius:8px; color:#fff; font-size:14px;">
                     </div>
                     <div style="margin-bottom:15px;">
-                        <label style="display:block; font-size:12px; font-weight:bold;">Local Directory (relative to plugins/)</label>
-                        <input type="text" id="edit-local-dir" value="${p.localDir || ''}" placeholder="e.g. MyPluginDir" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
+                        <label style="display:block; font-size:12px; font-weight:bold; color:#ccc; margin-bottom:6px;">Local Directory (relative to plugins/)</label>
+                        <input type="text" id="edit-local-dir" value="${p.localDir || ''}" placeholder="e.g. MyPluginDir" style="width:100%; padding:10px 12px; box-sizing:border-box; background:#1c1c1c; border:1px solid #00ff00; border-radius:8px; color:#fff; font-size:14px;">
                     </div>
                     <div style="margin-bottom:15px;">
-                        <label style="display:block; font-size:12px; font-weight:bold;">Files to skip during update/reinstall</label>
-                        <textarea id="edit-skip-files" placeholder="Enter one file name or path per line, e.g. LICENSE or docs/readme.md" style="width:100%; min-height:80px; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">${(p.skipFiles || []).join('\n')}</textarea>
-                        <p style="font-size:11px; color:#666; margin:6px 0 0;">Separate each file with a new line. Paths are matched against the repository file path and the local relative path.</p>
+                        <label style="display:block; font-size:12px; font-weight:bold; color:#ccc; margin-bottom:6px;">Files to skip during update/reinstall</label>
+                        <textarea id="edit-skip-files" placeholder="Enter one file name or path per line, e.g. LICENSE or docs/readme.md" style="width:100%; min-height:80px; padding:10px 12px; box-sizing:border-box; background:#1c1c1c; border:1px solid #00ff00; border-radius:8px; color:#fff; font-size:14px; font-family:inherit;">${(p.skipFiles || []).join('\n')}</textarea>
+                        <p style="font-size:11px; color:#aaa; margin:6px 0 0;">Separate each file with a new line. Paths are matched against the repository file path and the local relative path.</p>
                     </div>
-                    <div style="display:flex; justify-content:flex-end; gap:10px;">
-                        <button id="cancel-edit" style="padding:8px 15px; border:none; background:#eee; cursor:pointer; border-radius:4px;">Cancel</button>
-                        <button id="save-edit" style="padding:8px 15px; border:none; background:#fe0830; color:#fff; cursor:pointer; border-radius:4px;">Save Settings</button>
+                    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:22px;">
+                        <button id="cancel-edit" class="updater-btn updater-btn-danger" style="padding:10px 18px; font-size:14px; white-space:nowrap;">Cancel</button>
+                        <button id="save-edit" class="updater-btn updater-btn-primary" style="padding:10px 18px; font-size:14px; white-space:nowrap;">Save Settings</button>
                     </div>
                 `;
 
@@ -859,69 +1028,259 @@
         }
 
         function openAddModal(allPlugins) {
-            // Create a modal overlay to block interaction with the background
             const overlay = document.createElement('div');
-            overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:100000; display:flex; align-items:center; justify-content:center; color:#000;';
+            overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:100000; display:flex; align-items:center; justify-content:center; padding:20px;';
 
-            // Build the modal container with input fields for GitHub and local info
             const modal = document.createElement('div');
-            modal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:450px; box-shadow:0 10px 25px rgba(0,0,0,0.5);';
-            let calculatedBranch = 'main';
+            modal.style.cssText = 'background:#161616; padding:26px; border-radius:12px; width:100%; max-width:1040px; box-shadow:0 18px 40px rgba(0,0,0,0.6); border:1px solid #00ff00; color:#eee; font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size:15px; line-height:1.7;';
 
             modal.innerHTML = `
-                    <h3 style="margin-top:0;">Add New Plugin</h3>
-                    <p style="font-size:12px; color:#666; margin-bottom:15px;">Enter the GitHub URL and click Verify to auto-fill details.<br>
-                    Check the <a href="https://github.com/NoobishSVK/fm-dx-webserver/wiki/Plugin-List" target="_blank" style="color:#3fa9f5; text-decoration:underline;">Plugin List</a> for available repositories.</p>
-                    <div style="margin-bottom:15px;">
-                        <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">GitHub Repository URL</label>
-                        <div style="display:flex; gap:5px;">
-                            <input type="text" id="add-repo-url" list="repo-datalist" placeholder="https://github.com/mm-prg/FavStations" style="flex-grow:1; min-width:0; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
-                            <datalist id="repo-datalist"></datalist>
-                            <button id="verify-repo-btn" style="width:34px; height:34px; background:#00ccff; border:none; border-radius:4px; cursor:pointer; font-size:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center;" title="Verify repository contents"><i class="fa-solid fa-magnifying-glass"></i></button>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:12px;">
+                        <div>
+                            <h3 class="updater-title" style="margin:0; font-size:1.5em;">Add New Plugin</h3>
                         </div>
                     </div>
-                    <div style="margin-bottom:15px;">
-                        <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">Descriptor File Path (.js) in Repo</label>
-                        <input type="text" id="add-file-path" placeholder="e.g. FavStations.js or Folder/Plugin.js" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
+                    <div id="repo-selection-list" style="display:grid; gap:14px; max-height:540px; overflow:auto; padding-right:6px; border:1px solid #00ff00; border-radius:12px; padding:14px;">
+                        <div style="background:#1c1c1c; border:1px solid #00ff00; border-radius:10px; padding:18px; color:#ccc; font-size:14px;">Loading known plugins...</div>
                     </div>
-                    <div style="margin-bottom:15px;">
-                        <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">Local Directory (relative to plugins/)</label>
-                        <input type="text" id="add-local-dir" placeholder="e.g. FavStations" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;">
-                    </div>
-                    <div style="margin-bottom:15px;">
-                        <label style="display:block; font-size:12px; font-weight:bold; margin-bottom:5px;">Files to skip during update/reinstall</label>
-                        <textarea id="add-skip-files" placeholder="Enter one file name or path per line, e.g. LICENSE or docs/readme.md" style="width:100%; min-height:80px; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px;"></textarea>
-                        <p style="font-size:11px; color:#666; margin:6px 0 0;">Separate each file with a new line. Paths are matched against the repository file path and the local relative path.</p>
-                    </div>
-                    <div style="display:flex; justify-content:flex-end; gap:10px;">
-                        <button id="cancel-add" style="padding:8px 15px; border:none; background:#eee; cursor:pointer; border-radius:4px;">Cancel</button>
-                        <button id="save-add" style="padding:8px 15px; border:none; background:#fe0830; color:#fff; cursor:pointer; border-radius:4px;">Save & Install</button>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:18px; gap:12px;">
+                        <div style="display:flex; gap:10px;">
+                            <button id="custom-add-btn" class="updater-btn updater-btn-primary" style="padding:12px 16px; font-size:14px; white-space:nowrap; width:auto; display:inline-flex; align-items:center; justify-content:center;">Add custom plugin</button>
+                            <button id="cancel-add" class="updater-btn updater-btn-danger" style="padding:12px 16px; font-size:14px;">Cancel</button>
+                        </div>
                     </div>
                 `;
 
             overlay.appendChild(modal);
             document.body.appendChild(overlay);
 
-            // Carica i repository conosciuti per il datalist
+            modal.querySelector('#cancel-add').onclick = () => overlay.remove();
+            modal.querySelector('#custom-add-btn').onclick = () => {
+                overlay.remove();
+                openAddDetailsModal(allPlugins);
+            };
+
             fetch('/plugins/Updater/read-file?fileName=' + encodeURIComponent('Updater/repo_data.json'))
                 .then(res => res.text())
                 .then(text => {
                     try {
                         const repos = JSON.parse(text);
-                        const datalist = modal.querySelector('#repo-datalist');
-                        if (datalist && repos) {
-                            Object.entries(repos).forEach(([name, url]) => {
-                                const option = document.createElement('option');
-                                option.value = url;
-                                option.textContent = name;
-                                datalist.appendChild(option);
+                        const list = modal.querySelector('#repo-selection-list');
+                        if (!list) return;
+
+                        const isInstalled = (name, url) => {
+                            const normalizedName = name.trim().toLowerCase();
+                            const baseName = normalizedName.replace(/\s*\(.+\)$/, '').trim();
+                            const normalizedUrl = (url || '').trim().toLowerCase();
+                            return allPlugins.some(p => {
+                                const names = [p.name || '', p.logicalName || ''].map(v => v.toLowerCase().trim());
+                                if (names.includes(normalizedName) || names.includes(baseName)) return true;
+                                const repoUrl = (p.repoUrl || '').trim().toLowerCase();
+                                if (repoUrl && normalizedUrl && repoUrl === normalizedUrl) return true;
+                                return false;
+                            });
+                        };
+
+                        const parseGithubRepo = (repoUrl) => {
+                            const match = repoUrl.match(/github\.com\/([^/]+)\/([^/\s?#]+)/i);
+                            return match ? { owner: match[1], repo: match[2] } : null;
+                        };
+
+                        const stripMarkdown = (text) => {
+                            const cleaned = text
+                                .replace(/```[\s\S]*?```/g, ' ')
+                                .replace(/`[^`]*`/g, ' ')
+                                .replace(/!\[[^\]]*\]\([^\)]+\)/g, ' ')
+                                .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+                                .replace(/<[^>]+>/g, ' ')
+                                .replace(/[>#*\-_=\[\]~]/g, ' ')
+                                .replace(/\s+/g, ' ')
+                                .trim();
+                            return cleaned;
+                        };
+
+                        const normalizeReadmeImageUrl = (imgSrc, owner, repo, branch) => {
+                            if (!imgSrc) return null;
+                            if (/^https?:\/\//i.test(imgSrc)) return imgSrc;
+                            if (imgSrc.startsWith('/')) {
+                                return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}${imgSrc}`;
+                            }
+                            return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${imgSrc.replace(/^\.\//, '')}`;
+                        };
+
+                        const showImageOverlay = (imageUrl, altText) => {
+                            const overlay = document.createElement('div');
+                            overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.88); z-index:100001; display:flex; align-items:center; justify-content:center; padding:20px; cursor:pointer;';
+                            const img = document.createElement('img');
+                            img.src = imageUrl;
+                            img.alt = altText;
+                            img.style.cssText = 'max-width:90%; max-height:90%; border-radius:12px; box-shadow:0 18px 40px rgba(0,0,0,0.6);';
+                            overlay.appendChild(img);
+                            overlay.onclick = () => overlay.remove();
+                            document.body.appendChild(overlay);
+                        };
+
+                        const loadReadmePreview = async (repoUrl, textElement, imageElement, pluginName) => {
+                            const repoInfo = parseGithubRepo(repoUrl);
+                            if (!repoInfo) {
+                                textElement.textContent = 'README preview unavailable.';
+                                return;
+                            }
+
+                            const tryRawReadme = async () => {
+                                const branches = ['HEAD', 'main', 'master'];
+                                const names = ['README.md', 'README.MD', 'README.markdown', 'README.txt', 'readme.md'];
+                                for (const branch of branches) {
+                                    for (const name of names) {
+                                        const rawUrl = `https://raw.githubusercontent.com/${repoInfo.owner}/${repoInfo.repo}/${branch}/${name}`;
+                                        const res = await fetch(rawUrl);
+                                        if (res.ok) {
+                                            const text = await res.text();
+                                            let resolvedBranch = branch;
+                                            if (res.url) {
+                                                const match = res.url.match(new RegExp(`https://raw\.githubusercontent\.com/${repoInfo.owner}/${repoInfo.repo}/(.+)/${name.replace(/\./g, '\\.')}$`));
+                                                if (match && match[1]) {
+                                                    resolvedBranch = match[1];
+                                                    if (resolvedBranch.startsWith('refs/heads/')) {
+                                                        const parts = resolvedBranch.split('/');
+                                                        resolvedBranch = parts[parts.length - 1] || resolvedBranch;
+                                                    }
+                                                }
+                                            }
+                                            return { text, branch: resolvedBranch };
+                                        }
+                                    }
+                                }
+                                return null;
+                            };
+
+                            try {
+                                const readmeData = await tryRawReadme();
+                                if (!readmeData || !readmeData.text) throw new Error('No README');
+
+                                const decoded = readmeData.text;
+                                const firstImageMatch = decoded.match(/!\[[^\]]*\]\(([^\)]+)\)/);
+                                const firstHtmlImageMatch = decoded.match(/<img[^>]+src=["']([^"']+)["']/i);
+                                let previewText = stripMarkdown(decoded);
+                                if (!previewText) previewText = 'README preview unavailable.';
+                                if (previewText.length > 220) previewText = previewText.slice(0, 220).trim() + '...';
+
+                                textElement.textContent = previewText;
+                                const imageSrc = (firstImageMatch && firstImageMatch[1]) || (firstHtmlImageMatch && firstHtmlImageMatch[1]);
+                                if (imageSrc) {
+                                    const imageUrl = normalizeReadmeImageUrl(imageSrc, repoInfo.owner, repoInfo.repo, readmeData.branch);
+                                    const altText = pluginName ? `${pluginName} preview` : `${repoInfo.repo} preview`;
+                                    imageElement.innerHTML = `
+                                        <div style="position:relative; width:100%; height:100%; cursor:pointer; overflow:hidden; border-radius:10px;" title="Click to Enlarge">
+                                            <img src="${imageUrl}" alt="${altText}" title="Click to Enlarge" style="width:100%; height:100%; object-fit:cover; display:block;">
+                                            <div style="position:absolute; inset:0; background:rgba(0,0,0,0.12); display:flex; align-items:center; justify-content:center;">
+                                                <span style="font-size:22px; color:#fff; text-shadow:0 0 10px rgba(0,0,0,0.5);">🔍</span>
+                                            </div>
+                                        </div>
+                                    `;
+                                    const clickArea = imageElement.firstElementChild;
+                                    if (clickArea) {
+                                        clickArea.onclick = (event) => {
+                                            event.stopPropagation();
+                                            showImageOverlay(imageUrl, altText);
+                                        };
+                                    }
+                                }
+                            } catch (e) {
+                                textElement.textContent = 'README preview unavailable.';
+                            }
+                        };
+
+                        list.innerHTML = '';
+                        const entries = Object.entries(repos).sort((a, b) => a[0].localeCompare(b[0], undefined, { sensitivity: 'base' }));
+                        const availableEntries = entries.filter(([name, url]) => !isInstalled(name, url));
+                        if (availableEntries.length === 0) {
+                            list.innerHTML = `<div style="background:#1c1c1c; border:1px solid #2d2d2d; border-radius:8px; padding:16px; color:#ccc;">All known plugins are already installed.</div>`;
+                        } else {
+                            availableEntries.forEach(([name, url]) => {
+                                const item = document.createElement('div');
+                                item.style.cssText = 'display:flex; justify-content:flex-start; align-items:flex-start; gap:18px; padding:18px 20px; border:1px solid #2f4a2f; border-radius:10px; background:#1f1f1f;';
+                                item.innerHTML = `
+                                    <div style="flex:0 0 180px; max-width:180px; display:flex; align-items:center; justify-content:center;">
+                                        <div class="repo-preview-image" style="width:180px; height:140px; border-radius:10px; overflow:hidden; background:#121212; display:flex; align-items:center; justify-content:center;"></div>
+                                    </div>
+                                    <div style="min-width:0; flex:1; display:flex; flex-direction:column; gap:10px;">
+                                        <div>
+                                            <div style="font-size:16px; font-weight:700; color:#fff; margin-bottom:6px;">${name}</div>
+                                            <div style="font-size:13px; color:#ddd; word-break:break-all;"><a href="${url}" target="_blank" rel="noreferrer noopener" style="color:#8ab9ff; text-decoration:underline;">${url}</a></div>
+                                        </div>
+                                        <div class="repo-preview-text" style="font-size:14px; color:#ccc; margin-top:4px; line-height:1.6;">Loading README preview...</div>
+                                    </div>
+                                    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:12px; width:150px;">
+                                        <button class="updater-btn updater-btn-primary" style="padding:10px 14px; white-space:nowrap; font-size:14px;">Select</button>
+                                    </div>
+                                `;
+                                const button = item.querySelector('button');
+                                const previewText = item.querySelector('.repo-preview-text');
+                                const previewImage = item.querySelector('.repo-preview-image');
+                                if (button) {
+                                    button.onclick = () => {
+                                        overlay.remove();
+                                        openAddDetailsModal(allPlugins, url, name);
+                                    };
+                                }
+                                list.appendChild(item);
+                                loadReadmePreview(url, previewText, previewImage, name);
                             });
                         }
-                    } catch (e) { }
+                        if (entries.length === 0) {
+                            list.innerHTML = `<div style="background:#1c1c1c; border:1px solid #2d2d2d; border-radius:8px; padding:16px; color:#ccc;">No known plugins found in repo_data.json.</div>`;
+                        }
+                    } catch (e) {
+                        const list = modal.querySelector('#repo-selection-list');
+                        if (list) list.innerHTML = `<div style="background:#1c1c1c; border:1px solid #2d2d2d; border-radius:8px; padding:16px; color:#f88;">Unable to load known plugins.</div>`;
+                    }
                 })
-                .catch(() => { });
+                .catch(() => {
+                    const list = modal.querySelector('#repo-selection-list');
+                    if (list) list.innerHTML = `<div style="background:#1c1c1c; border:1px solid #2d2d2d; border-radius:8px; padding:16px; color:#f88;">Unable to load known plugins.</div>`;
+                });
+        }
 
-            // Automatically detect plugin info when the "Verify" button is clicked
+        function openAddDetailsModal(allPlugins, initialRepoUrl = '', initialPluginName = '') {
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:100000; display:flex; align-items:center; justify-content:center; padding:20px; color:#eee;';
+
+            const modal = document.createElement('div');
+            modal.style.cssText = 'background:#161616; padding:26px; border-radius:12px; width:100%; max-width:540px; box-shadow:0 18px 40px rgba(0,0,0,0.6); border:1px solid #00ff00; color:#eee; font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size:14px; line-height:1.6;';
+            let calculatedBranch = 'main';
+
+            modal.innerHTML = `
+                    <h3 style="margin:0 0 6px 0; font-size:1.4em; color:#fff;">Add New Plugin</h3>
+                    <p style="font-size:13px; color:#aaa; margin-top:0; margin-bottom:18px;">Enter the repository details for the plugin you want to install, then click Verify.</p>
+                    <div style="margin-bottom:15px;">
+                        <label style="display:block; font-size:12px; font-weight:bold; color:#ccc; margin-bottom:6px;">GitHub Repository URL</label>
+                        <div style="display:flex; gap:8px;"><input type="text" id="add-repo-url" value="${initialRepoUrl}" placeholder="https://github.com/mm-prg/FavStations" style="flex-grow:1; min-width:0; padding:10px 12px; box-sizing:border-box; background:#1c1c1c; border:1px solid #00ff00; border-radius:8px; color:#fff; font-size:14px;"><button id="verify-repo-btn" style="width:40px; height:40px; background:#3fa9f5; border:none; border-radius:8px; cursor:pointer; font-size:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center; color:#000;" title="Verify repository contents"><i class="fa-solid fa-magnifying-glass"></i></button></div>
+                    </div>
+                    <div style="margin-bottom:15px;">
+                        <label style="display:block; font-size:12px; font-weight:bold; color:#ccc; margin-bottom:6px;">Descriptor File Path / URL (.js)</label>
+                        <input type="text" id="add-file-path" placeholder="e.g. FavStations.js or Folder/Plugin.js" style="width:100%; padding:10px 12px; box-sizing:border-box; background:#1c1c1c; border:1px solid #00ff00; border-radius:8px; color:#fff; font-size:14px;">
+                    </div>
+                    <div style="margin-bottom:15px;">
+                        <label style="display:block; font-size:12px; font-weight:bold; color:#ccc; margin-bottom:6px;">Local Directory (relative to plugins/)</label>
+                        <input type="text" id="add-local-dir" placeholder="e.g. FavStations" style="width:100%; padding:10px 12px; box-sizing:border-box; background:#1c1c1c; border:1px solid #00ff00; border-radius:8px; color:#fff; font-size:14px;">
+                    </div>
+                    <div style="margin-bottom:15px;">
+                        <label style="display:block; font-size:12px; font-weight:bold; color:#ccc; margin-bottom:6px;">Files to skip during update/reinstall</label>
+                        <textarea id="add-skip-files" placeholder="Enter one file name or path per line, e.g. LICENSE or docs/readme.md" style="width:100%; min-height:90px; padding:10px 12px; box-sizing:border-box; background:#1c1c1c; border:1px solid #00ff00; border-radius:8px; color:#fff; font-size:14px; font-family:inherit;"></textarea>
+                        <p style="font-size:11px; color:#aaa; margin:6px 0 0;">Separate each file with a new line. Paths are matched against the repository file path and the local relative path.</p>
+                    </div>
+                    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:22px;">
+                        <button id="cancel-add" class="updater-btn updater-btn-danger" style="padding:10px 18px; font-size:14px; white-space:nowrap;">Cancel</button>
+                        <button id="save-add" class="updater-btn updater-btn-primary" style="padding:10px 18px; font-size:14px; white-space:nowrap;">Save & Install</button>
+                    </div>
+                `;
+
+            overlay.appendChild(modal);
+            document.body.appendChild(overlay);
+
+            modal.querySelector('#cancel-add').onclick = () => overlay.remove();
+
             modal.querySelector('#verify-repo-btn').onclick = async () => {
                 const repoUrl = modal.querySelector('#add-repo-url').value.trim();
                 const match = repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)(?:\/tree\/([^ \n?#]+))?/);
@@ -938,13 +1297,11 @@
 
                 let branchList = [];
                 try {
-                    // Fetch available branches
                     const branchesRes = await fetch(`/plugins/Updater/branches?repoUrl=${encodeURIComponent(repoUrl)}`);
                     if (branchesRes.ok) {
                         branchList = await branchesRes.json();
                     }
 
-                    // Step 1: Check root contents to see if a 'plugins' folder exists
                     const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`);
                     const repoInfo = await repoRes.json();
 
@@ -977,34 +1334,24 @@
                     }
 
                     let files = await res.json();
-
-                    // Determine if we should look in the root or in a 'plugins' subdirectory
                     const pluginsDirItem = files.find(f => f.name.toLowerCase() === 'plugins' && f.type === 'dir');
-
                     if (pluginsDirItem) {
-                        // Scenario: Repository has a 'plugins/' folder containing the descriptor and files
                         res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/plugins?ref=${branch}`);
                         if (res.ok) {
                             files = await res.json();
                         }
                     }
 
-                    // Step 2: Search for .js files in the identified directory that might be descriptors
                     const jsFiles = files.filter(f => f.name.endsWith('.js') && f.name !== 'index.js' && !f.name.includes('.frontend.'));
                     let found = false;
-
                     for (const file of jsFiles) {
                         const rawRes = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${file.path}`);
                         if (rawRes.ok) {
                             const text = await rawRes.text();
-                            // A descriptor must contain the 'pluginConfig' variable
                             if (text.includes('pluginConfig')) {
                                 modal.querySelector('#add-file-path').value = file.path;
-
-                                // Attempt to guess the local directory by reading the frontEndPath metadata
                                 const feMatch = text.match(/frontEndPath\s*:\s*['"]([^'"]+)['"]/);
                                 let suggestedDir = (feMatch && feMatch[1].includes('/')) ? feMatch[1].split('/')[0] : "";
-
                                 modal.querySelector('#add-local-dir').value = suggestedDir;
                                 found = true;
                                 break;
@@ -1018,9 +1365,6 @@
                 }
             };
 
-            modal.querySelector('#cancel-add').onclick = () => overlay.remove();
-
-            // Handle the Save & Install action
             modal.querySelector('#save-add').onclick = async () => {
                 const repoUrl = modal.querySelector('#add-repo-url').value.trim();
                 const manualFilePath = modal.querySelector('#add-file-path').value.trim();
@@ -1028,7 +1372,6 @@
                 const skipFiles = modal.querySelector('#add-skip-files').value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
                 const branch = calculatedBranch;
 
-                // Basic validation to ensure all required fields are populated
                 if (!repoUrl || !manualFilePath || !localDir) {
                     return alert("All three fields are required.");
                 }
@@ -1043,10 +1386,8 @@
                 saveBtn.disabled = true;
                 saveBtn.textContent = "Verifying...";
 
-                // Verify the existence of the plugin descriptor file on GitHub before proceeding
                 let descriptorText = "";
                 const foundFileUrl = manualFilePath;
-
                 const testUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${foundFileUrl}`;
                 try {
                     const res = await fetch(testUrl);
@@ -1064,21 +1405,14 @@
                 }
 
                 let skipRecursive = false;
-
-                // Extract metadata (name and frontend path) directly from the descriptor source code
                 const nameMatch = descriptorText.match(/name\s*:\s*['"]([^'"]+)['"]/);
                 const fePathMatch = descriptorText.match(/frontEndPath\s*:\s*['"]([^'"]+)['"]/);
-
                 const originalPluginName = nameMatch ? nameMatch[1] : repo;
                 const fePath = fePathMatch ? fePathMatch[1] : "";
                 const descriptorFileName = foundFileUrl.split('/').pop();
-
                 let targetPluginName = originalPluginName;
                 let targetLocalDir = localDir;
                 let targetDescriptorName = descriptorFileName;
-
-                // If a secondary branch is indicated in the URL (e.g. .../tree/develop)
-                // create two rows: one for the main branch (metadata only) and one for the requested branch.
                 const hasTree = repoUrl.includes('/tree/');
                 if (hasTree && branch && branch !== 'main') {
                     try {
@@ -1096,13 +1430,11 @@
                                 localDescriptorName: targetDescriptorName
                             })
                         });
-                        // The specific branch entry will have the extended name
                         targetPluginName = `${originalPluginName} (${branch})`;
                     } catch (e) { console.error("[Updater] Error creating main entry:", e); }
                 }
 
                 try {
-                    // Step 1: Save the plugin configuration/overrides to the server
                     const res = await fetch('/plugins/Updater/save-override', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1121,7 +1453,6 @@
                     const data = await res.json();
                     if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
                     if (data.ok) {
-                        // Step 2: Trigger the actual file download and installation process
                         saveBtn.textContent = "Downloading files...";
                         const updateRes = await fetch('/plugins/Updater/update-plugin', {
                             method: 'POST',
@@ -1139,11 +1470,7 @@
 
                         const updateData = await updateRes.json();
                         if (updateData.rateLimit) updateRateLimitDisplay(updateData.rateLimit);
-
-                        // Update rate limit display after the second save-override call
                         if (updateData.rateLimit) updateRateLimitDisplay(updateData.rateLimit);
-
-                        // Success: close modal, show summary, and refresh the plugin list
                         overlay.remove();
                         const fileList = updateData.files ? `\n\nDownloaded files:\n- ${updateData.files.join('\n- ')}` : '';
                         const excludedList = updateData.skippedBySkipFiles?.length > 0 ? `\n\nExcluded by skipFiles:\n- ${updateData.skippedBySkipFiles.join('\n- ')}` : '';
@@ -1910,7 +2237,7 @@
                             <button id="terminal-custom-1" class="updater-btn" style="background:#444; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:90px; flex-shrink:0; text-align:center;" title="Right click to edit">${customButtons[0].label}</button>
                             <button id="terminal-custom-2" class="updater-btn" style="background:#444; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:90px; flex-shrink:0; text-align:center;" title="Right click to edit">${customButtons[1].label}</button>
                             <button id="terminal-clear-btn" class="updater-btn" style="background:#333; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:70px; flex-shrink:0; text-align:center;">Clear Screen</button>
-                            <button id="terminal-close-btn" class="updater-btn" style="background:#fe0830; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:60px; flex-shrink:0; text-align:center;">Close</button>
+                            <button id="terminal-close-btn" class="updater-btn" style="background:#fe0830; color:#fff; padding:2px 0; font-size:10px; border-radius:3px; width:60px; flex-shrink:0; text-align:center;">Cancel</button>
                         </div>
                     </div>
 
@@ -2127,6 +2454,88 @@
         }
 
 
+        function escapeSelectorValue(value) {
+            if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+                return CSS.escape(value);
+            }
+            return value.replace(/(["\\])/g, '\\$1');
+        }
+
+        function normalizePluginId(value) {
+            if (!value) return '';
+            return value.toString().replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        }
+
+        function findPluginIconElement(p) {
+            const searchNames = [];
+            if (p.name) searchNames.push(p.name);
+            if (p.logicalName && p.logicalName !== p.name) searchNames.push(p.logicalName);
+            if (p.fileName) searchNames.push(p.fileName.replace(/\.[^.]+$/, ''));
+            if (p.name && p.name.includes('(')) {
+                const plainName = p.name.replace(/\s*\(.+\)$/, '').trim();
+                if (plainName) searchNames.push(plainName);
+            }
+            const uniqueNames = Array.from(new Set(searchNames.filter(Boolean)));
+            const normalizedNames = uniqueNames.map(normalizePluginId).filter(Boolean);
+
+            // First try the standard plugin button pattern: <id>-on-off
+            const pluginButtons = Array.from(document.querySelectorAll('button[id$="-on-off"]'));
+            for (const button of pluginButtons) {
+                const normalizedId = normalizePluginId(button.id.replace(/-on-off$/i, ''));
+                if (normalizedNames.includes(normalizedId)) {
+                    return button;
+                }
+            }
+
+            const attrNames = ['title', 'aria-label', 'data-title', 'data-tooltip'];
+            for (const name of uniqueNames) {
+                const escaped = escapeSelectorValue(name);
+                for (const attr of attrNames) {
+                    const selector = `[${attr}*=\"${escaped}\"]`;
+                    const element = document.querySelector(selector);
+                    if (element) return element;
+                }
+            }
+
+            const buttonCandidates = Array.from(document.querySelectorAll('.headerButton, button, a, div'));
+            const lowerNames = uniqueNames.map(n => n.toLowerCase());
+            for (const element of buttonCandidates) {
+                const text = (element.textContent || '').trim().toLowerCase();
+                if (!text) continue;
+                if (lowerNames.some(name => text === name || text.includes(name))) {
+                    return element;
+                }
+            }
+            return null;
+        }
+
+        function closeUpdaterUI() {
+            if (isOnSetupPage) {
+                if (window.location.pathname !== '/' && window.location.pathname !== '/index.html') {
+                    window.location.href = '/';
+                }
+                return;
+            }
+            if (container) container.style.display = 'none';
+            if (overlay) overlay.style.display = 'none';
+        }
+        
+        async function togglePluginEnabled(p) {
+            const nextEnabled = p.isEnabled !== false;
+            try {
+                const res = await fetch('/plugins/Updater/plugin-state', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pluginName: p.logicalName || p.name || p.fileName, enabled: !nextEnabled })
+                });
+                if (!res.ok) throw new Error('Unable to save plugin state');
+                p.isEnabled = !nextEnabled;
+                renderPluginRows();
+            } catch (e) {
+                alert('Unable to change the plugin state.');
+            }
+        }
+
         function renderPluginRows() {
             const tbody = document.getElementById('updater-list-body');
             if (!tbody) return;
@@ -2138,27 +2547,29 @@
 
                 li.innerHTML = `
                     <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden; min-width: 0;">
-                        <div class="updater-title" style="flex: 0 0 28%; color: #3fa9f5; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; min-width: 0; text-align: left !important; display: flex; align-items: center; gap: 6px;" title="${p.fullPath || ''}">
+                        <div class="updater-title" style="flex: 0 0 24%; color: #3fa9f5; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; min-width: 0; text-align: left !important; display: flex; align-items: center; gap: 6px;" title="${p.fullPath || ''}">
                             ${p.name || 'Unknown'}
                             ${p.hasStaleFiles ? '<i class="fa-solid fa-triangle-exclamation" style="color: #ffaa00; font-size: 12px;" title="Node.js Cache Out of Sync: some backend files have been modified on disk but are not yet reloaded in memory. A server restart is required."></i>' : ''}
                         </div>
-                        <div class="updater-subtitle" style="flex: 0 0 18%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
+                        <div class="updater-subtitle" style="flex: 0 0 15%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
                             ${p.author || 'Unknown'}
                         </div>
-                        <div class="updater-subtitle" style="flex: 0 0 7%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
+                        <div class="updater-subtitle" style="flex: 0 0 6%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
                             v<span style="color: #fff;">${p.version}</span>
                         </div>
-                        <div id="remote-ver-${p.name.replace(/\s+/g, '_')}" class="updater-subtitle" style="flex: 0 0 9%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
+                        <div id="remote-ver-${p.name.replace(/\s+/g, '_')}" class="updater-subtitle" style="flex: 0 0 8%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
                             ${p.cachedRemoteVer ? `<span style="color: #fff;">${p.cachedRemoteVer}</span>` : '<span style="color: #666; font-style: italic;">...</span>'}
                         </div>
                         <div id="status-${p.name.replace(/\s+/g, '_')}" style="flex: 1; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
                             <span style="color: #666; font-style: italic;">Checking...</span>
                         </div>
                     </div>
-                    <div style="width: 160px; flex-shrink: 0; margin-left: 10px; display: flex; justify-content: flex-end;">
-                        <div class="actions-container" style="display: flex; gap: 4px; align-items: center;">
+                    <div style="min-width: 320px; flex-shrink: 0; margin-left: 10px; display: flex; justify-content: flex-end;">
+                        <div class="actions-container" style="display: flex; gap: 3px; align-items: center; flex-wrap: nowrap; justify-content: flex-end;">
+                            <button class="updater-btn updater-btn-small updater-toggle-btn" style="background:${(p.isEnabled !== false) ? '#1f8f1f' : '#666'}; color:#fff;" title="${(p.isEnabled !== false) ? 'Disable this plugin' : 'Enable this plugin'}">${(p.isEnabled !== false) ? 'Enabled' : 'Disabled'}</button>
                             <button class="updater-btn updater-btn-small updater-edit-btn" style="background:#444; color:#fff;" title="Modify GitHub repository, file paths, or local directory for this plugin">Edit</button>
                             ${settings.advancedMode ? '<button class="updater-btn updater-btn-small updater-explore-btn" style="background:#444; color:#fff;" title="Browse and manage plugin files, view code, or edit configurations">Explore</button>' : ''}
+                            
                             <button class="updater-btn updater-btn-small updater-delete-btn" style="background:#444; color:#fff;" title="Completely remove this plugin and its files from the server">Delete</button>
                         </div>
                     </div>
@@ -2192,6 +2603,9 @@
 
                 const exploreBtn = li.querySelector('.updater-explore-btn');
                 if (exploreBtn) exploreBtn.onclick = viewFileAction;
+
+                const toggleBtn = li.querySelector('.updater-toggle-btn');
+                if (toggleBtn) toggleBtn.onclick = () => togglePluginEnabled(p);
 
                 const delBtn = li.querySelector('.updater-delete-btn');
                 if (delBtn) delBtn.onclick = () => performDelete(p);
