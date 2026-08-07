@@ -8,7 +8,7 @@
 "use strict";
 
 (async () => {
-    const pluginVersion = '0.2.3dev';
+    const pluginVersion = '0.2.4dev';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg';
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -108,10 +108,29 @@
         const existingMirror = descriptionPluginBarState.scrollArea.querySelector(`[data-updater-desc-anchor="${mirrorKey}"]`);
         if (existingMirror) return;
 
+        // The main toolbar can use custom tooltip attributes whose handlers are not cloned.
+        const tooltipSource = button.getAttribute('data-tooltip') ||
+            button.getAttribute('data-bs-original-title') ||
+            button.getAttribute('title') ||
+            button.getAttribute('aria-label') ||
+            button.querySelector('[data-tooltip], [data-bs-original-title], [title]')?.getAttribute('data-tooltip') ||
+            button.querySelector('[data-tooltip], [data-bs-original-title], [title]')?.getAttribute('data-bs-original-title') ||
+            button.querySelector('[data-tooltip], [data-bs-original-title], [title]')?.getAttribute('title') ||
+            button.textContent?.trim() ||
+            'Plugin';
         const clone = button.cloneNode(true);
         clone.removeAttribute('id');
         clone.setAttribute('data-updater-desc-anchor', mirrorKey);
-        clone.setAttribute('aria-label', button.getAttribute('aria-label') || button.title || button.textContent || 'Plugin');
+        clone.setAttribute('aria-label', button.getAttribute('aria-label') || tooltipSource);
+        const usesServerTooltip = button.classList.contains('tooltip') || button.hasAttribute('data-tooltip');
+        if (usesServerTooltip) {
+            clone.classList.add('tooltip');
+            clone.setAttribute('data-tooltip', button.getAttribute('data-tooltip') || tooltipSource);
+            clone.setAttribute('data-tooltip-placement', button.getAttribute('data-tooltip-placement') || 'top');
+            clone.removeAttribute('title');
+        } else {
+            clone.setAttribute('title', tooltipSource);
+        }
         clone.removeAttribute('onclick');
         clone.style.pointerEvents = 'auto';
 
@@ -119,12 +138,21 @@
             event.preventDefault();
             event.stopPropagation();
             closeServerDescriptionPage();
-            if (typeof button.click === 'function') {
-                button.click();
-            }
+            // Some plugins (e.g. Stream, LiveMap) use mousedown+mouseup instead of click
+            // for their toggle logic (including long-press detection).
+            // We simulate the full mouse event sequence so those handlers fire correctly.
+            const opts = { bubbles: true, cancelable: true };
+            button.dispatchEvent(new MouseEvent('mousedown', opts));
+            button.dispatchEvent(new MouseEvent('mouseup', opts));
+            button.dispatchEvent(new MouseEvent('click', opts));
         });
 
         descriptionPluginBarState.scrollArea.appendChild(clone);
+        // Plugin buttons are added after the server initially binds its tooltips.
+        // Bind the mirrored button through that same initializer to retain its style.
+        if (usesServerTooltip && typeof window.initTooltips === 'function') {
+            window.initTooltips(clone);
+        }
     }
 
     function ensureDescriptionPluginBar() {
@@ -260,7 +288,7 @@
         let isListLoaded = false;
 
         // Retrieve settings from the server (default advancedMode: true)
-        let settings = { showInPluginPanel: true, showInHeader: true, showInSetup: true, advancedMode: true, customButtons: [] };
+        let settings = { showInPluginPanel: true, showInHeader: true, showInSetup: true, showInServerDescription: true, advancedMode: true, customButtons: [] };
         try {
             const settingsRes = await fetch('/plugins/Updater/settings?t=' + Date.now());
             if (settingsRes.ok) {
@@ -270,6 +298,7 @@
                 settings.showInPluginPanel = data.showInPluginPanel ?? (data.visibility === 'both' || data.visibility === 'main' || true);
                 settings.showInHeader = data.showInHeader ?? (data.visibility === 'both' || data.visibility === 'main' || true);
                 settings.showInSetup = data.showInSetup ?? (data.visibility === 'both' || data.visibility === 'setup' || true);
+                settings.showInServerDescription = data.showInServerDescription ?? true;
                 settings.advancedMode = data.advancedMode ?? true;
             }
         } catch (e) { }
@@ -285,6 +314,9 @@
 
         const isOnSetupPage = window.location.pathname.includes('/setup');
         const isMainPage = window.location.pathname === '/' || window.location.pathname.endsWith('/index.html') || window.location.pathname === '';
+
+        // This shortcut bar is governed only by its own setting, so regular users can see it too.
+        if (settings.showInServerDescription) ensureDescriptionPluginBar();
 
         // Initialize the interface only if:
         // 1. We are on the setup page (native administrative area)
@@ -424,8 +456,6 @@
                 overlay.style.display = 'none';
             };
         }
-        ensureDescriptionPluginBar();
-
         // Create the button to open the plugin list on the main page
         // This button is created only if we are not on the setup page.
         if (!isOnSetupPage) {
@@ -1045,6 +1075,8 @@
                     </div>
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:18px; gap:12px;">
                         <div style="display:flex; gap:10px;">
+                            <button id="disclaimer-btn" class="updater-btn" style="padding:12px 16px; font-size:14px; white-space:nowrap; background:#333; color:#fff;" title="Important, please read me!">DISCLAIMER</button>
+                            <button id="installed-filter-btn" class="updater-btn" style="padding:12px 16px; font-size:14px; white-space:nowrap; background:#333; color:#fff;">Showing: not installed</button>
                             <button id="custom-add-btn" class="updater-btn updater-btn-primary" style="padding:12px 16px; font-size:14px; white-space:nowrap; width:auto; display:inline-flex; align-items:center; justify-content:center;">Add custom plugin</button>
                             <button id="cancel-add" class="updater-btn updater-btn-danger" style="padding:12px 16px; font-size:14px;">Cancel</button>
                         </div>
@@ -1059,6 +1091,29 @@
                 overlay.remove();
                 openAddDetailsModal(allPlugins);
             };
+            modal.querySelector('#disclaimer-btn').onclick = () => {
+                const disclaimerOverlay = document.createElement('div');
+                disclaimerOverlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:100001; display:flex; align-items:center; justify-content:center; padding:20px;';
+                const disclaimerModal = document.createElement('div');
+                disclaimerModal.style.cssText = 'background:#161616; border:1px solid #00ff00; border-radius:12px; width:100%; max-width:680px; padding:26px; color:#eee; font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size:14px; line-height:1.6; box-shadow:0 18px 40px rgba(0,0,0,0.6);';
+                disclaimerModal.innerHTML = `
+                    <h3 style="margin:0 0 16px; color:#fff; font-size:1.4em;">DISCLAIMER</h3>
+                    <p>The listed plugins are created and maintained by their respective authors. Install and use them at your own risk.</p>
+                    <p>The plugin list is compiled from the <a href="https://discord.com/channels/1053804249651359765/1233159920711368765" target="_blank" rel="noreferrer noopener" style="color:#3fa9f5;">FM-DX Webserver Discord plugin page</a> and the <a href="https://github.com/NoobishSVK/fm-dx-webserver/wiki/Plugin-List" target="_blank" rel="noreferrer noopener" style="color:#3fa9f5;">FM-DX Webserver Plugin List</a>.</p>
+                    <p>Report any missing or non-working plugins on the <a href="https://discord.com/channels/1053804249651359765/1233159920711368765/threads/1506667363859173468" target="_blank" rel="noreferrer noopener" style="color:#3fa9f5;">Updater plugin Discord page</a>.</p>
+                    <div style="display:flex; justify-content:flex-end; margin-top:22px;">
+                        <button id="close-disclaimer-btn" class="updater-btn updater-btn-danger" style="padding:10px 18px; font-size:14px;">Close</button>
+                    </div>
+                `;
+                disclaimerOverlay.appendChild(disclaimerModal);
+                document.body.appendChild(disclaimerOverlay);
+                disclaimerModal.querySelector('#close-disclaimer-btn').onclick = () => disclaimerOverlay.remove();
+                disclaimerOverlay.onclick = (event) => {
+                    if (event.target === disclaimerOverlay) disclaimerOverlay.remove();
+                };
+            };
+            let showInstalledPlugins = false;
+            const installedFilterBtn = modal.querySelector('#installed-filter-btn');
 
             fetch('/plugins/Updater/read-file?fileName=' + encodeURIComponent('Updater/repo_data.json'))
                 .then(res => res.text())
@@ -1114,6 +1169,7 @@
                             const img = document.createElement('img');
                             img.src = imageUrl;
                             img.alt = altText;
+                            img.title = 'Click again to go back';
                             img.style.cssText = 'max-width:90%; max-height:90%; border-radius:12px; box-shadow:0 18px 40px rgba(0,0,0,0.6);';
                             overlay.appendChild(img);
                             overlay.onclick = () => overlay.remove();
@@ -1191,13 +1247,24 @@
                             }
                         };
 
-                        list.innerHTML = '';
                         const entries = Object.entries(repos).sort((a, b) => a[0].localeCompare(b[0], undefined, { sensitivity: 'base' }));
-                        const availableEntries = entries.filter(([name, url]) => !isInstalled(name, url));
-                        if (availableEntries.length === 0) {
-                            list.innerHTML = `<div style="background:#1c1c1c; border:1px solid #2d2d2d; border-radius:8px; padding:16px; color:#ccc;">All known plugins are already installed.</div>`;
-                        } else {
-                            availableEntries.forEach(([name, url]) => {
+                        const renderRepositoryList = () => {
+                            const visibleEntries = showInstalledPlugins
+                                ? entries
+                                : entries.filter(([name, url]) => !isInstalled(name, url));
+                            installedFilterBtn.textContent = showInstalledPlugins
+                                ? `Showing: all plugins (${visibleEntries.length})`
+                                : `Showing: not installed (${visibleEntries.length})`;
+                            installedFilterBtn.title = showInstalledPlugins ? 'Click to show only plugins that are not installed' : 'Click to show all known plugins, including installed ones';
+                            list.innerHTML = '';
+
+                            if (visibleEntries.length === 0) {
+                                list.innerHTML = `<div style="background:#1c1c1c; border:1px solid #2d2d2d; border-radius:8px; padding:16px; color:#ccc;">All known plugins are already installed.</div>`;
+                                return;
+                            }
+
+                            visibleEntries.forEach(([name, url]) => {
+                                const pluginAlreadyInstalled = isInstalled(name, url);
                                 const item = document.createElement('div');
                                 item.style.cssText = 'display:flex; justify-content:flex-start; align-items:flex-start; gap:18px; padding:18px 20px; border:1px solid #2f4a2f; border-radius:10px; background:#1f1f1f;';
                                 item.innerHTML = `
@@ -1212,13 +1279,13 @@
                                         <div class="repo-preview-text" style="font-size:14px; color:#ccc; margin-top:4px; line-height:1.6;">Loading README preview...</div>
                                     </div>
                                     <div style="display:flex; flex-direction:column; align-items:flex-end; gap:12px; width:150px;">
-                                        <button class="updater-btn updater-btn-primary" style="padding:10px 14px; white-space:nowrap; font-size:14px;">Select</button>
+                                        <button class="updater-btn ${pluginAlreadyInstalled ? '' : 'updater-btn-primary'}" ${pluginAlreadyInstalled ? 'disabled' : ''} style="padding:10px 14px; white-space:nowrap; font-size:14px; ${pluginAlreadyInstalled ? 'background:#555; color:#bbb; cursor:not-allowed; opacity:0.75;' : ''}" title="${pluginAlreadyInstalled ? 'This plugin is already installed' : 'Select this plugin'}">${pluginAlreadyInstalled ? 'Already installed' : 'Select'}</button>
                                     </div>
                                 `;
                                 const button = item.querySelector('button');
                                 const previewText = item.querySelector('.repo-preview-text');
                                 const previewImage = item.querySelector('.repo-preview-image');
-                                if (button) {
+                                if (button && !pluginAlreadyInstalled) {
                                     button.onclick = () => {
                                         overlay.remove();
                                         openAddDetailsModal(allPlugins, url, name);
@@ -1227,9 +1294,17 @@
                                 list.appendChild(item);
                                 loadReadmePreview(url, previewText, previewImage, name);
                             });
-                        }
+                        };
+
+                        installedFilterBtn.onclick = () => {
+                            showInstalledPlugins = !showInstalledPlugins;
+                            renderRepositoryList();
+                        };
+
                         if (entries.length === 0) {
                             list.innerHTML = `<div style="background:#1c1c1c; border:1px solid #2d2d2d; border-radius:8px; padding:16px; color:#ccc;">No known plugins found in repo_data.json.</div>`;
+                        } else {
+                            renderRepositoryList();
                         }
                     } catch (e) {
                         const list = modal.querySelector('#repo-selection-list');
@@ -1508,6 +1583,7 @@
                         <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="opt-show-panel" ${settings.showInPluginPanel ? 'checked' : ''}> Plugin Panel</label>
                         <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="opt-show-header" ${settings.showInHeader ? 'checked' : ''}> Header Button</label>
                         <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="opt-show-setup" ${settings.showInSetup ? 'checked' : ''}> Setup Table</label>
+                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="opt-show-server-description" ${settings.showInServerDescription ? 'checked' : ''}> Extra Plugin Bar</label>
                         <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer; color:#ffaa00;"><input type="checkbox" id="opt-advanced-mode" ${settings.advancedMode ? 'checked' : ''}> Advanced Mode (Explore Files)</label>
                     </div>
                     <div style="margin-bottom:12px; border-bottom:1px solid #333; padding-bottom:8px; font-weight:bold; color:#3fa9f5; font-size:11px; text-transform:uppercase;">Linux Terminal</div>
@@ -1533,6 +1609,7 @@
                     showInPluginPanel: dropdown.querySelector('#opt-show-panel').checked,
                     showInHeader: dropdown.querySelector('#opt-show-header').checked,
                     showInSetup: dropdown.querySelector('#opt-show-setup').checked,
+                    showInServerDescription: dropdown.querySelector('#opt-show-server-description').checked,
                     advancedMode: dropdown.querySelector('#opt-advanced-mode').checked,
                     sudoPassword: dropdown.querySelector('#opt-sudo-pass').value
                 };
@@ -1673,19 +1750,19 @@
             const getLocalPath = (p) => p.startsWith('plugins/') ? p.substring(8) : p;
 
             const overlay = document.createElement('div');
-            overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:100000; display:flex; align-items:center; justify-content:center; color:#000;';
+            overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:100000; display:flex; align-items:center; justify-content:center; color:#eee;';
 
             const modal = document.createElement('div');
-            modal.style.cssText = 'background:#fff; padding:20px; border-radius:8px; width:95%; max-width:1200px; height:90vh; display:flex; flex-direction:column; box-shadow:0 10px 25px rgba(0,0,0,0.5); color:#333;';
+            modal.style.cssText = 'background:#161616; padding:20px; border:1px solid #00ff00; border-radius:12px; width:95%; max-width:1200px; height:90vh; display:flex; flex-direction:column; box-shadow:0 18px 40px rgba(0,0,0,0.6); color:#eee;';
 
             const rootLabel = initialRoot === 'configs' ? 'configs' : (initialRoot === 'server' ? 'server' : (initialRoot === 'cache' ? 'Node.js Cache' : 'plugins'));
             const header = document.createElement('div');
-            header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #ccc; padding-bottom:5px;';
+            header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #333; padding-bottom:8px;';
             header.insertAdjacentHTML('beforeend', `<h3 style="margin:0;"><i class="fa-solid fa-magnifying-glass" style="color:#3fa9f5;"></i> Explore [${rootLabel}]: <span class="sc-view-filename" style="color:#3fa9f5;">${fileName || 'Select a file'}</span></h3>`);
 
             const closeBtn = document.createElement('button');
             closeBtn.textContent = '×';
-            closeBtn.style.cssText = 'background:none; border:none; padding:0; cursor:pointer; font-weight:bold; font-size:24px; line-height:1; width:auto;';
+            closeBtn.style.cssText = 'background:none; border:none; padding:0; cursor:pointer; font-weight:bold; font-size:24px; line-height:1; width:auto; color:#fff;';
             closeBtn.onclick = () => overlay.remove();
             header.appendChild(closeBtn);
             modal.appendChild(header);
@@ -1696,7 +1773,7 @@
 
             const sidebar = document.createElement('div');
             const hideSidebar = isSidebarHidden(initialRoot);
-            sidebar.style.cssText = `flex: 0 0 300px; display:${hideSidebar ? 'none' : 'flex'}; flex-direction:column; border-right:1px solid #eee; padding-right:15px; overflow-y:auto;`;
+            sidebar.style.cssText = `flex: 0 0 300px; display:${hideSidebar ? 'none' : 'flex'}; flex-direction:column; border-right:1px solid #333; padding-right:15px; overflow-y:auto;`;
             mainArea.appendChild(sidebar);
 
             const editorArea = document.createElement('div');
@@ -1705,15 +1782,15 @@
 
             const filterContainer = document.createElement('div');
             const showToolbar = fileName && (isTextFile(fileName) || forceReadOnly);
-            filterContainer.style.cssText = `margin-bottom: 10px; display: ${showToolbar ? 'flex' : 'none'}; align-items: center; gap: 15px; background: #f4f4f4; padding: 8px; border-radius: 4px; border: 1px solid #ddd;`;
+            filterContainer.style.cssText = `margin-bottom: 10px; display: ${showToolbar ? 'flex' : 'none'}; align-items: center; gap: 15px; background: #1c1c1c; padding: 8px; border-radius: 4px; border: 1px solid #333;`;
             filterContainer.innerHTML = `
                     <div id="log-filter-section" style="display: ${forceReadOnly ? 'flex' : 'none'}; align-items: center; gap: 10px; flex-grow: 1;">
                         <i class="fa-solid fa-filter" style="color: #3fa9f5;"></i>
-                        <span style="font-size: 12px; font-weight: bold; color: #555;">Fast Filter:</span>
-                        <input type="text" id="log-filter-input" placeholder="Type to filter lines (e.g. Updater)..." style="flex-grow: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; outline: none; background: #fff; color: #333;">
-                        <span id="log-filter-count" style="font-size: 11px; color: #777; white-space: nowrap;"></span>
+                        <span style="font-size: 12px; font-weight: bold; color: #ccc;">Fast Filter:</span>
+                        <input type="text" id="log-filter-input" placeholder="Type to filter lines (e.g. Updater)..." style="flex-grow: 1; padding: 6px; border: 1px solid #444; border-radius: 4px; font-size: 12px; outline: none; background: #111; color: #eee;">
+                        <span id="log-filter-count" style="font-size: 11px; color: #aaa; white-space: nowrap;"></span>
                     </div>
-                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 12px; font-weight: bold; color: #555; white-space: nowrap; user-select: none;">
+                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 12px; font-weight: bold; color: #ccc; white-space: nowrap; user-select: none;">
                         <input type="checkbox" id="word-wrap-toggle"> Word Wrap
                     </label>
                 `;
@@ -1736,16 +1813,16 @@
             }
 
             const codeWrapper = document.createElement('div');
-            codeWrapper.style.cssText = 'flex-grow:1; display:flex; overflow:hidden; border:1px solid #ddd; border-radius:4px; background:#f9f9f9;';
+            codeWrapper.style.cssText = 'flex-grow:1; display:flex; overflow:hidden; border:1px solid #333; border-radius:4px; background:#111;';
             editorArea.appendChild(codeWrapper);
 
             const lineNumbers = document.createElement('div');
-            lineNumbers.style.cssText = 'padding:10px 8px; background:#f4f4f4; border-right:1px solid #ddd; color:#999; text-align:right; font-family:monospace; font-size:12px; line-height:1.5; user-select:none; min-width:35px; overflow:hidden; white-space:pre;';
+            lineNumbers.style.cssText = 'padding:10px 8px; background:#1c1c1c; border-right:1px solid #333; color:#888; text-align:right; font-family:monospace; font-size:12px; line-height:1.5; user-select:none; min-width:35px; overflow:hidden; white-space:pre;';
             codeWrapper.appendChild(lineNumbers);
 
             const codeArea = document.createElement('textarea');
             codeArea.readOnly = true; // Default to read-only
-            codeArea.style.cssText = 'flex-grow:1; border:none; padding:10px; font-family:monospace; font-size:12px; line-height:1.5; white-space:pre; overflow:auto; background:transparent; resize:none; color:#333; outline:none;';
+            codeArea.style.cssText = 'flex-grow:1; border:none; padding:10px; font-family:monospace; font-size:12px; line-height:1.5; white-space:pre; overflow:auto; background:transparent; resize:none; color:#eee; outline:none;';
             codeWrapper.appendChild(codeArea);
 
             codeArea.onscroll = () => { lineNumbers.scrollTop = codeArea.scrollTop; };
@@ -1788,11 +1865,11 @@
                 }
             } else {
                 setEditorValue(`[INFO] The file "${fileName}" is in a non-textual format and cannot be displayed here.`);
-                codeArea.style.color = "#777";
+                codeArea.style.color = "#aaa";
             }
 
             const loadFileContent = async (targetFile) => {
-                codeArea.style.color = "#333";
+                codeArea.style.color = "#eee";
                 setEditorValue(`Loading ${targetFile}...`);
                 const nameSpan = header.querySelector('.sc-view-filename');
                 if (nameSpan) nameSpan.textContent = targetFile;
@@ -1842,7 +1919,7 @@
                 } catch (e) { setEditorValue("Error reading file."); }
 
                 codeArea.readOnly = true;
-                codeWrapper.style.borderColor = '#ddd';
+                codeWrapper.style.borderColor = '#333';
                 enableEditBtn.style.display = isEditableFile(targetFile, currentRoot) ? 'block' : 'none';
                 deleteFileBtn.style.display = isDeletableFile(targetFile, currentRoot) ? 'block' : 'none';
                 saveBtnContainer.style.display = 'none';
@@ -1850,7 +1927,7 @@
 
             const createExplorerSection = (label, root) => {
                 const btn = document.createElement('div');
-                btn.style.cssText = 'padding:10px; cursor:pointer; background:#eee; border-radius:4px; font-weight:bold; display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; color:#333; font-size:13px;';
+                btn.style.cssText = 'padding:10px; cursor:pointer; background:#262626; border:1px solid #3d3d3d; border-radius:4px; font-weight:bold; display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; color:#eee; font-size:13px;';
                 btn.innerHTML = `<span><i class="fa-solid fa-folder-open" style="color:#ffcc00; margin-right:8px;"></i>${label}</span><i class="fa-solid fa-chevron-down"></i>`;
 
                 if (root === 'plugins') btn.title = "Browse the main plugins/ directory of the server";
@@ -1875,7 +1952,7 @@
             const loadDir = async (path, container, root) => {
                 currentRoot = root;
                 currentExplorerPath = path;
-                container.innerHTML = path ? `<div style="padding:8px 10px; font-size:12px; color:#3fa9f5; font-weight:bold; background:#f8f8f8; margin-bottom:5px; border-radius:4px; border-left:3px solid #3fa9f5;">${path}</div>` : '';
+                container.innerHTML = path ? `<div style="padding:8px 10px; font-size:12px; color:#3fa9f5; font-weight:bold; background:#1c1c1c; margin-bottom:5px; border-radius:4px; border-left:3px solid #3fa9f5;">${path}</div>` : '';
                 const ul = document.createElement('ul');
                 ul.style.cssText = 'list-style:none; padding:0; margin:0; font-size:13px;';
                 container.appendChild(ul);
@@ -1893,7 +1970,7 @@
                     const items = await res.json();
                     items.sort((a, b) => (b.isDir - a.isDir) || a.name.localeCompare(b.name)).forEach(item => {
                         const li = document.createElement('li');
-                        li.style.cssText = 'padding:6px; cursor:pointer; border-bottom:1px solid #f9f9f9; display:flex; align-items:center; gap:8px;';
+                        li.style.cssText = 'padding:6px; cursor:pointer; border-bottom:1px solid #2b2b2b; display:flex; align-items:center; gap:8px; color:#ddd;';
                         const icon = item.isDir ? 'fa-folder' : 'fa-file-code';
                         const timeStr = item.mtime ? new Date(item.mtime).toLocaleString() : '';
                         li.innerHTML = `<i class="fa-solid ${icon}" style="color:${item.isDir ? '#ffcc00' : '#888'};"></i> ${item.name} ${timeStr ? `<span style="color:#888; font-size:9px; margin-left:auto;">(${timeStr})</span>` : ''}`;
@@ -2110,14 +2187,14 @@
             const enableEditBtn = document.createElement('button');
             enableEditBtn.innerHTML = '<i class="fa-solid fa-pencil"></i> Enable Editing';
             enableEditBtn.title = "Unlock the editor to make manual changes to this file";
-            enableEditBtn.style.cssText = 'padding:8px 15px; border:none; background:#ffaa00; color:#fff; cursor:pointer; border-radius:4px; font-weight:bold;';
+            enableEditBtn.style.cssText = 'padding:8px 15px; border:none; background:#ffaa00; color:#fff; cursor:pointer; border-radius:4px; font-weight:bold; width:auto !important; min-width:0 !important; flex:0 0 auto;';
             enableEditBtn.style.display = isEditableFile(fileName, currentRoot) ? 'block' : 'none';
             footer.appendChild(enableEditBtn);
 
             const deleteFileBtn = document.createElement('button');
             deleteFileBtn.innerHTML = '<i class="fa-solid fa-trash"></i> Delete File';
             deleteFileBtn.title = "Permanently delete this file from the server";
-            deleteFileBtn.style.cssText = 'padding:8px 15px; border:none; background:#fe0830; color:#fff; cursor:pointer; border-radius:4px; font-weight:bold;';
+            deleteFileBtn.style.cssText = 'padding:8px 15px; border:none; background:#fe0830; color:#fff; cursor:pointer; border-radius:4px; font-weight:bold; width:auto !important; min-width:0 !important; flex:0 0 auto;';
             deleteFileBtn.style.display = isDeletableFile(fileName, currentRoot) ? 'block' : 'none';
             footer.appendChild(deleteFileBtn);
 
@@ -2128,13 +2205,13 @@
             const cancelBtn = document.createElement('button');
             cancelBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> Cancel';
             cancelBtn.title = "Cancel all unsaved changes and return to read-only mode"; // Keep the same title for now, or adjust if needed
-            cancelBtn.style.cssText = 'padding:8px 15px; border:1px solid #ddd; background:#eee; color:#333; cursor:pointer; border-radius:4px; font-weight:bold;';
+            cancelBtn.style.cssText = 'padding:8px 15px; border:1px solid #444; background:#333; color:#fff; cursor:pointer; border-radius:4px; font-weight:bold; width:auto !important; min-width:0 !important; flex:0 0 auto;';
             saveBtnContainer.appendChild(cancelBtn);
 
             const saveBtn = document.createElement('button');
             saveBtn.innerHTML = '<i class="fa-solid fa-save"></i> Save Changes';
             saveBtn.title = "Apply and save changes to the server";
-            saveBtn.style.cssText = 'padding:8px 15px; border:none; background:#3fa9f5; color:#fff; cursor:pointer; border-radius:4px; font-weight:bold;';
+            saveBtn.style.cssText = 'padding:8px 15px; border:none; background:#3fa9f5; color:#fff; cursor:pointer; border-radius:4px; font-weight:bold; width:auto !important; min-width:0 !important; flex:0 0 auto;';
             saveBtnContainer.appendChild(saveBtn);
 
             enableEditBtn.onclick = () => {
@@ -2187,7 +2264,7 @@
             cancelBtn.onclick = () => {
                 setEditorValue(originalContent);
                 codeArea.readOnly = true;
-                codeWrapper.style.borderColor = '#ddd';
+                codeWrapper.style.borderColor = '#333';
                 enableEditBtn.style.display = isEditableFile(fileName, currentRoot, forceReadOnly) ? 'block' : 'none';
                 deleteFileBtn.style.display = isDeletableFile(fileName, currentRoot, forceReadOnly) ? 'block' : 'none';
                 saveBtnContainer.style.display = 'none';

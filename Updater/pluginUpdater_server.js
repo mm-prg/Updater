@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.2.3dev)
+ * Updater Plugin for FM-DX Webserver (v. 0.2.4dev)
  * ************************************************
  */
 
@@ -393,7 +393,7 @@ function getCacheDetailsForFiles(filePaths) {
  */
 endpointsRouter.get('/plugins/Updater/settings', express.json({ limit: '10mb' }), (req, res) => {
     const settings = readJsonFile(settingsPath);
-    res.json(settings.showInPluginPanel !== undefined ? settings : { showInPluginPanel: true, showInHeader: true, showInSetup: true, advancedMode: true });
+    res.json(settings.showInPluginPanel !== undefined ? settings : { showInPluginPanel: true, showInHeader: true, showInSetup: true, showInServerDescription: true, advancedMode: true });
 });
 
 /**
