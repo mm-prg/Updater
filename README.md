@@ -10,7 +10,7 @@ You may also explore the plugin files stored on the server and directly check an
 
 ## Features
 
-- **Select new plugins from a list of all known plugins**: A list of all known plugins is available, with a description of each plugin.
+- **Install a new plugin selecting it from the list of all known plugins**: A list of all known plugins has been collected, with a description of each plugin.
 - **Automated Version Checking**: Automatically scans GitHub to detect if newer versions of your installed plugins are available.
 - **One-Click Updates**: Download and install the latest versions of plugins, including recursive updates for associated folders and subdirectories.
 - **Easy Plugin Configuration**: Directly view and modify the plugin configuration (and the the server configuration, too) with the internal editor.  
