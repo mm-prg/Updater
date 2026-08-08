@@ -1075,7 +1075,7 @@
                     </div>
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:18px; gap:12px;">
                         <div style="display:flex; gap:10px;">
-                            <button id="disclaimer-btn" class="updater-btn" style="padding:12px 16px; font-size:14px; white-space:nowrap; background:#333; color:#fff;" title="Important, please read me!">DISCLAIMER</button>
+                            <button id="disclaimer-btn" class="updater-btn" style="padding:12px 16px; font-size:14px; white-space:nowrap; background:#333; color:#ff6;" title="Important, please read me!">DISCLAIMER</button>
                             <button id="installed-filter-btn" class="updater-btn" style="padding:12px 16px; font-size:14px; white-space:nowrap; background:#333; color:#fff;">Showing: not installed</button>
                             <button id="custom-add-btn" class="updater-btn updater-btn-primary" style="padding:12px 16px; font-size:14px; white-space:nowrap; width:auto; display:inline-flex; align-items:center; justify-content:center;">Add custom plugin</button>
                             <button id="cancel-add" class="updater-btn updater-btn-danger" style="padding:12px 16px; font-size:14px;">Cancel</button>
@@ -1327,7 +1327,7 @@
 
             modal.innerHTML = `
                     <h3 style="margin:0 0 6px 0; font-size:1.4em; color:#fff;">Add New Plugin</h3>
-                    <p style="font-size:13px; color:#aaa; margin-top:0; margin-bottom:18px;">Enter the repository details for the plugin you want to install, then click Verify.</p>
+                    <p style="font-size:13px; color:#aaa; margin-top:0; margin-bottom:18px;">Enter the repository details for the plugin you want to install or just click on the lens icon to try to auto-detect the data.</p>
                     <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:12px; font-weight:bold; color:#ccc; margin-bottom:6px;">GitHub Repository URL</label>
                         <div style="display:flex; gap:8px;"><input type="text" id="add-repo-url" value="${initialRepoUrl}" placeholder="https://github.com/mm-prg/FavStations" style="flex-grow:1; min-width:0; padding:10px 12px; box-sizing:border-box; background:#1c1c1c; border:1px solid #00ff00; border-radius:8px; color:#fff; font-size:14px;"><button id="verify-repo-btn" style="width:40px; height:40px; background:#3fa9f5; border:none; border-radius:8px; cursor:pointer; font-size:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center; color:#000;" title="Verify repository contents"><i class="fa-solid fa-magnifying-glass"></i></button></div>
@@ -1448,7 +1448,7 @@
                 const branch = calculatedBranch;
 
                 if (!repoUrl || !manualFilePath || !localDir) {
-                    return alert("All three fields are required.");
+                    return alert("All three fields are required. Click on the lens icon to try to auto-detect the data.");
                 }
 
                 const match = repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)(?:\/tree\/([^ \n?#]+))?/);
@@ -2596,7 +2596,7 @@
             if (container) container.style.display = 'none';
             if (overlay) overlay.style.display = 'none';
         }
-        
+
         async function togglePluginEnabled(p) {
             const nextEnabled = p.isEnabled !== false;
             try {
@@ -2643,7 +2643,9 @@
                     </div>
                     <div style="min-width: 320px; flex-shrink: 0; margin-left: 10px; display: flex; justify-content: flex-end;">
                         <div class="actions-container" style="display: flex; gap: 3px; align-items: center; flex-wrap: nowrap; justify-content: flex-end;">
-                            <button class="updater-btn updater-btn-small updater-toggle-btn" style="background:${(p.isEnabled !== false) ? '#1f8f1f' : '#666'}; color:#fff;" title="${(p.isEnabled !== false) ? 'Disable this plugin' : 'Enable this plugin'}">${(p.isEnabled !== false) ? 'Enabled' : 'Disabled'}</button>
+                            ${/* TEMP DISABLED - rimuovi questo ${ e il } finale per riattivare il bottone
+                            `<button class="updater-btn updater-btn-small updater-toggle-btn" style="background:${(p.isEnabled !== false) ? '#1f8f1f' : '#666'}; color:#fff;" title="${(p.isEnabled !== false) ? 'Disable this plugin' : 'Enable this plugin'}">${(p.isEnabled !== false) ? 'Enabled' : 'Disabled'}</button>`
+                            */ ''}
                             <button class="updater-btn updater-btn-small updater-edit-btn" style="background:#444; color:#fff;" title="Modify GitHub repository, file paths, or local directory for this plugin">Edit</button>
                             ${settings.advancedMode ? '<button class="updater-btn updater-btn-small updater-explore-btn" style="background:#444; color:#fff;" title="Browse and manage plugin files, view code, or edit configurations">Explore</button>' : ''}
                             
