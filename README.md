@@ -2,37 +2,23 @@
 
 The **Updater** plugin is a plugin management tool designed for the [FM-DX Webserver](https://github.com/NoobishSVK/fm-dx-webserver). 
 It provides a web interface to easily track new versions of the installed plugins and update them, automatically downloading files from the GitHub repository and saving them in the web server. 
-You can automatically install a new plugin, selecting front a list of known plugins or add a new plugin, just providing the URL of its GitHub repository. 
+You can automatically install a new plugin, selecting from a list of known plugins or add a new plugin, just providing the URL of its GitHub repository. 
 You may also explore the plugin files stored on the server and directly check and modify them with the plugin editor (e.g. config files, etc). 
 - The Discord plugin page is: https://discord.com/channels/1053804249651359765/1506667363859173468/1506667363859173468
 
 <img width="2392" height="1237" alt="image" src="https://github.com/user-attachments/assets/f5bc1bf5-0ac5-4210-a879-fb8896a080e3" />
 
-## Version 3.0
-
-- Added a selectable list of all known plugins, to easily find new plugins.
-- Added an extra 
-
-## Version 2.2
-- Added the ability to exclude files while updating/reinstalling. This is useful to prevent deleting already modified local files (e.g. for the Scanner plugin, to prevent deleting files like whitelist.txt or blacklist.txt). Thanks to TVCL for his suggestion
-
-## Version 2.1
-
-- Automatic recognition of locally installed plugins has been improved. The plugin should automatically recognize most of the available plugins and therefore make the first installation easier.
-Thanks to @Ian Kelly | Reading, G 🇬🇧 for his report!
-If you find a plugin that isn't automatically recognized, please let me know and I'll add it to the database.
-
-## Version 2.0
-- Added a server terminal, working on both Linux amd Windows, which allows you to send commands directly to the server
-
 ## Features
 
+- **Select new plugins from a list of all known plugins**: A list of all known plugins is available, with a description of each plugin.
 - **Automated Version Checking**: Automatically scans GitHub to detect if newer versions of your installed plugins are available.
 - **One-Click Updates**: Download and install the latest versions of plugins, including recursive updates for associated folders and subdirectories.
-- **Plugin Discovery & Installation**: Add new plugins by simply providing a GitHub repository URL. The updater automatically identifies descriptor files and required folder structures.
-- **Plugins Overview**: A sortable table showing all installed plugins, current versions, authors, and real-time status.
+- **Easy Plugin Configuration**: Directly view and modify the plugin configuration (and the the server configuration, too) with the internal editor.  
+- **More Plugin Discovery**: Add unknown plugins by simply providing a GitHub repository URL. Updater auto-detects the descriptor files and the required folder structures.
+- **Installed Plugins Overview**: A sortable table showing all installed plugins, current versions, authors, and real-time status.
 - **Source Code Viewer**: Inspect local plugin descriptor files directly from the web interface.
 - **Update Check**: Remembers and displays the specific files that were modified or added during the last update process. 
+- **Extra Plugins Bar**: Displays an extra plugin bar, just below the server description. Useful when you have a lot of plugins!
 
 ## First installation
 
@@ -86,13 +72,16 @@ When started for the first time, it will try to automatically retrieve the URL o
 
 ## Adding a new plugin
 
-1. Click the **Add new plugin** button in the top-right corner.
-2. Paste the **GitHub repository URL** (e.g., `https://github.com/mm-prg/FavStations`).
-3. Click the 🔍 (**Verify**) button. The system will automatically:
+<img width="2590" height="1816" alt="image" src="https://github.com/user-attachments/assets/ff9bcc57-c322-47ea-ba1a-284b56ad6536" />
+
+- Click the **Add new plugin** button in the top-right corner of the main page, to open the **list of all known plugins**.
+- Browse through the list and select the plugin you want to install
+- If you want to install a plugin not included in the list, paste the **GitHub repository URL** (e.g., `https://github.com/mm-prg/FavStations`).
+- Click the 🔍 (**Verify**) button. The system will automatically:
    - Scan the repository for a valid descriptor file (containing `pluginConfig`).
    - Check both the root and the `/plugins` directory on GitHub.
    - Detect the recommended **Local Directory** based on the plugin's frontend path.
-4. Click **Save & Install**. The updater will download the descriptor and recursively pull all required assets into the correct folders.
+- Click **Save & Install**. The updater will download the descriptor and recursively pull all required assets into the correct folders.
 
 **AS USUAL, AFTER INSTALLING A NEW PLUGIN, YOU HAVE TO RESTART THE SERVER AND ENABLE IT IN THE SETUP MENU, THEN CLEAR THE BROWSER CACHE AND RESTART THE SERVER ONE MORE TIME!**
 
@@ -108,7 +97,7 @@ You may hide this menu (and the Explore button). Select "Advanced Mode" on/off f
 
 <img width="3100" height="1678" alt="image" src="https://github.com/user-attachments/assets/b81dbc1d-05b7-4791-a58a-f3a72285b829" />
 
-- This is a small terminal (bash/cmd), working on both Linux amd Windows, which allows you to send commands directly to the server
+- This is a small terminal (bash/cmd), working on both Linux amd Windows, which allows you to send commands directly to the server (using child_process)
 - The available commands obviously depend on the operating system of your server (Windows/Linux).
 - On linux you can also use **"sudo" commands**
 - So, you may shutdown or reboot the server or send any command you want (e.g. "sudo shutdown now", "shutdown -r -t 0", "sudo reboot" etc).
@@ -120,7 +109,7 @@ You may hide this menu (and the Explore button). Select "Advanced Mode" on/off f
 ## Explore page
 You may hide this button (and the Advanced Tools menu). Select "Advanced Mode" on/off from the Options menu
 
-<img width="3033" height="1708" alt="image" src="https://github.com/user-attachments/assets/ad820295-cebf-4df6-85f5-02fa340c4202" />
+<img width="2263" height="1731" alt="image" src="https://github.com/user-attachments/assets/b067c3a8-d7bd-4bbc-b208-ae4c3e551d7f" />
 
 Clicking on "Explore" opens the Explore page.
 Select a file or a directory from the dropdown menus on the left, to browse and check files stored in the server directories **"\plugins"** and **"\plugins_configs"**
@@ -131,8 +120,6 @@ You may view the content of text files and even modify them.
 When you download a plugin via the Updater, a sidebar will appear with a list of the downloaded files and the skipped files. To avoid overfilling the server \plugins directory, no file outside the plugins directory is downloaded. If you want to view these files, just click on the repository link of the plugin, shown above. 
 
 ## Modifying a plugin parameters or a plugin configuration file
-
-<img width="3052" height="1728" alt="image" src="https://github.com/user-attachments/assets/33ee33d7-6536-434d-aee1-b63cc5061fc1" />
 
 - Click on Explore, select the **"plugins_configs"** dropdown menu
 - Click on the plugin config file (e.g. Updater.json, etc), that shows the content of the file
@@ -148,13 +135,37 @@ Click the **Gear Icon** next to the version number to access advanced settings:
 - **Advanced Mode** Hide/Show the Advanced Tools Menu and the Explore button
 - **Sudo Password** If you want, you may store the server password here
 
+## Extra Plugins Bar
+- Displays an extra plugin bar, just below the server description. Useful when you have a lot of plugins!
 
 ## Notes
 - Comments and suggestions are welcome! Thanks to anyone who tries the plugin and reports any bugs.
 - If you like the plugin, please tell me on Discord: https://discord.com/channels/1053804249651359765/1506667363859173468/1506667363859173468
-- If you find a plugin that isn't automatically recognized, please let me know and I'll add it to the database.
+- The listed plugins are created and maintained by their respective authors. Install and use them at your own risk.
+- The plugin list is compiled from the **FM-DX Webserver Discord plugin page** (https://discord.com/channels/1053804249651359765/1233159920711368765) and the **FM-DX Webserver Plugin List** (https://github.com/NoobishSVK/fm-dx-webserver/wiki/Plugin-List).
+- Report any missing or non-working plugins on the **Updater plugin Discord page** (https://discord.com/channels/1053804249651359765/1233159920711368765/threads/1506667363859173468)
 - If the new version of a plugin has changed the names of the files or directories used or their position, it is recommended to delete it and then reload it as a new plugin. 
 - The program uses the **Github API** (https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2026-03-10), which has a limit of 60 requests per hour. 
 The limit should be sufficient for all normal uses. If it is exceeded (error 403), you simply have to wait the necessary time. The number of available calls is indicated on the main page, at the top right. 
 
 *Disclaimer: This plugin requires administrative privileges and an active internet connection to communicate with GitHub. The plugin is provided as is and without any guarantee. It is recommended to back up your data before performing any change.*
+
+## Version history
+
+### Version 3.0
+
+- A new way of adding a new plugin. Simply select it from the list of all known plugins, to easily find new ones (there are really a lot of fantastic plugins to discover!).
+- Added an extra bar of plugins, useful if you installed a lot of them!
+
+### Version 2.2
+- Added the ability to exclude files while updating/reinstalling. This is useful to prevent deleting already modified local files (e.g. for the Scanner plugin, to prevent deleting files like whitelist.txt or blacklist.txt). Thanks to TVCL for his suggestion
+
+### Version 2.1
+
+- Automatic recognition of locally installed plugins has been improved. The plugin should automatically recognize most of the available plugins and therefore make the first installation easier.
+Thanks to @Ian Kelly | Reading, G 🇬🇧 for his report!
+If you find a plugin that isn't automatically recognized, please let me know and I'll add it to the database.
+
+### Version 2.0
+- Added a server terminal, working on both Linux amd Windows, which allows you to send commands directly to the server
+
