@@ -1,12 +1,17 @@
-# Updater Plugin for FM-DX Webserver 
+# Updater Plugin Manager for FM-DX Webserver
 
-The **Updater** plugin is a management tool designed for the [FM-DX Webserver](https://github.com/NoobishSVK/fm-dx-webserver). 
+The **Updater** plugin is a plugin management tool designed for the [FM-DX Webserver](https://github.com/NoobishSVK/fm-dx-webserver). 
 It provides a web interface to easily track new versions of the installed plugins and update them, automatically downloading files from the GitHub repository and saving them in the web server. 
-It can automatically install a new plugin, just providing the URL of its GitHub repository. 
+You can automatically install a new plugin, selecting front a list of known plugins or add a new plugin, just providing the URL of its GitHub repository. 
 You may also explore the plugin files stored on the server and directly check and modify them with the plugin editor (e.g. config files, etc). 
 - The Discord plugin page is: https://discord.com/channels/1053804249651359765/1506667363859173468/1506667363859173468
 
 <img width="2392" height="1237" alt="image" src="https://github.com/user-attachments/assets/f5bc1bf5-0ac5-4210-a879-fb8896a080e3" />
+
+## Version 3.0
+
+- Added a selectable list of all known plugins, to easily find new plugins.
+- Added an extra 
 
 ## Version 2.2
 - Added the ability to exclude files while updating/reinstalling. This is useful to prevent deleting already modified local files (e.g. for the Scanner plugin, to prevent deleting files like whitelist.txt or blacklist.txt). Thanks to TVCL for his suggestion
