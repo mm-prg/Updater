@@ -14,6 +14,7 @@ const express = require('express');
 const https = require('https');
 const endpointsRouter = require('../../server/endpoints');
 const { logInfo, logError } = require('../../server/console');
+const { protectUpdaterRoutes } = require('./adminAuth');
 
 const pluginName = "Updater";
 // The script is located in main/plugins/Updater/
@@ -42,6 +43,11 @@ if (!fs.existsSync(pluginStatesPath)) fs.writeFileSync(pluginStatesPath, JSON.st
 // Increase payload limit for the core server endpoint /data_plugins
 // to prevent 413 errors when saving a long list of plugins.
 endpointsRouter.use('/data_plugins', express.json({ limit: '10mb' }));
+
+// Updater can modify files and execute operating-system commands. Enforce the
+// FM-DX administrator session on every plugin endpoint before registering any
+// /plugins/Updater route below.
+protectUpdaterRoutes(endpointsRouter);
 
 //  logInfo(`[${pluginName}] Backend script is being loaded...`);
 
@@ -822,15 +828,10 @@ endpointsRouter.post('/plugins/Updater/delete-plugin', express.json({ limit: '10
 
 /**
  * Endpoint to execute shell commands on the server.
- * WARNING: This endpoint is highly sensitive and must be protected by strong authentication
- * and authorization checks to ensure only trusted administrators can access it.
- * The current implementation assumes the main server's middleware handles admin authentication.
+ * This endpoint is highly sensitive. Access is protected by the centralized
+ * administrator-session middleware registered near the top of this module.
  */
 endpointsRouter.post('/plugins/Updater/terminal-command', express.json({ limit: '10mb' }), (req, res) => {
-    // TODO: Implement robust server-side authentication and authorization checks here.
-    // This is a critical security vulnerability if not properly protected.
-    // Example: if (!req.user || !req.user.isAdmin) { return res.status(403).json({ ok: false, error: 'Unauthorized' }); }
-
     const { command, sudoPassword: tempPassword } = req.body;
     const platform = os.platform(); // Rilevazione tramite modulo os
 
