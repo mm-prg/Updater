@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.3.1dev)
+ * Updater Plugin for FM-DX Webserver (v. 0.3.2dev)
  * ************************************************
  */
 
@@ -640,11 +640,13 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json({ limit: '10
 /**
  * Update the FM-DX Webserver checkout from its official GitHub repository.
  * Updates are fast-forward-only. A normal update requires a clean working
- * tree; the explicit reinstall action restores tracked files at the current revision.
+ * tree; a forced update discards local changes to tracked files and restores
+ * them from the new official revision.
  */
 endpointsRouter.post('/plugins/Updater/update-server', express.json({ limit: '10kb' }), async (req, res) => {
     try {
         const reinstall = req.body?.reinstall === true;
+        const force = req.body?.force === true;
         if (!fs.existsSync(path.join(serverRootDir, '.git'))) {
             await restoreFromOfficialClone();
             await runNpmInstall();
@@ -659,7 +661,7 @@ endpointsRouter.post('/plugins/Updater/update-server', express.json({ limit: '10
         }
 
         const { stdout: workingTree } = await runGit(['status', '--porcelain']);
-        if (!reinstall && workingTree.trim()) {
+        if (!reinstall && !force && workingTree.trim()) {
             return res.status(409).json({
                 ok: false,
                 error: `The server working tree has local changes. Commit, stash, or discard them before updating:\n${workingTree.trim()}`
@@ -675,13 +677,37 @@ endpointsRouter.post('/plugins/Updater/update-server', express.json({ limit: '10
 
         const { stdout: before } = await runGit(['rev-parse', 'HEAD']);
         await runGit(['fetch', '--quiet', 'origin', 'main']);
-        await runGit(['merge', '--ff-only', 'FETCH_HEAD']);
+        if (force) {
+            // Never let a forced tracked-file update silently remove an untracked
+            // file that occupies a path introduced by the incoming revision.
+            const [{ stdout: untracked }, { stdout: incomingPaths }] = await Promise.all([
+                runGit(['ls-files', '--others', '--exclude-standard']),
+                runGit(['diff', '--name-only', '--diff-filter=AM', 'HEAD', 'FETCH_HEAD'])
+            ]);
+            const untrackedPaths = untracked.split(/\r?\n/).filter(Boolean);
+            const incoming = incomingPaths.split(/\r?\n/).filter(Boolean);
+            const conflicts = untrackedPaths.filter(untrackedPath => incoming.some(incomingPath =>
+                incomingPath === untrackedPath ||
+                incomingPath.startsWith(`${untrackedPath}/`) ||
+                untrackedPath.startsWith(`${incomingPath}/`)
+            ));
+            if (conflicts.length) {
+                return res.status(409).json({
+                    ok: false,
+                    error: `Cannot force the update because it would overwrite untracked files:\n${conflicts.join('\n')}`
+                });
+            }
+            // This deliberately affects tracked files only; untracked files are preserved.
+            await runGit(['reset', '--hard', 'FETCH_HEAD']);
+        } else {
+            await runGit(['merge', '--ff-only', 'FETCH_HEAD']);
+        }
         await runNpmInstall();
         const { stdout: after } = await runGit(['rev-parse', 'HEAD']);
 
         const updated = before.trim() !== after.trim();
-        logInfo(`[${pluginName}] FM-DX Webserver ${updated ? 'updated' : 'is already up to date'} (${after.trim()}).`);
-        res.json({ ok: true, updated });
+        logInfo(`[${pluginName}] FM-DX Webserver ${updated ? 'updated' : 'is already up to date'}${force ? ' (local tracked changes overwritten)' : ''} (${after.trim()}).`);
+        res.json({ ok: true, updated, forced: force });
     } catch (e) {
         const details = (e.stderr || e.message || 'Unknown Git error').trim();
         logError(`[${pluginName}] FM-DX Webserver update failed:`, details);

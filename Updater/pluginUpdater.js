@@ -8,7 +8,7 @@
 "use strict";
 
 (async () => {
-    const pluginVersion = '0.3.1dev';
+    const pluginVersion = '0.3.2dev';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg';
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -723,16 +723,40 @@
             button.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>&nbsp;${reinstall ? 'Reinstalling...' : 'Updating...'}`;
 
             try {
-                const response = await fetch('/plugins/Updater/update-server', {
+                let response = await fetch('/plugins/Updater/update-server', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ reinstall })
                 });
-                const result = await response.json();
+                let result = await response.json();
+
+                // Offer an explicit destructive retry only when the regular update is
+                // blocked by local changes in the server working tree.
+                if (!reinstall && response.status === 409 && /working tree has local changes/i.test(result.error || '')) {
+                    const overwrite = confirm(
+                        'The server has local tracked changes. Download the update anyway and overwrite those files?\n\n' +
+                        'This permanently discards local changes to tracked server files. Untracked files are kept.'
+                    );
+                    if (overwrite) {
+                        button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>&nbsp;Overwriting and updating...';
+                        response = await fetch('/plugins/Updater/update-server', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ force: true })
+                        });
+                        result = await response.json();
+                    } else {
+                        button.disabled = false;
+                        button.innerHTML = '<i class="fa-solid fa-download"></i>&nbsp;Update server';
+                        return;
+                    }
+                }
                 if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
 
                 const status = document.getElementById('updater-status');
-                if (status) status.textContent = reinstall ? 'Server reinstalled; restarting now...' : (result.updated ? 'Server updated; restarting now...' : 'Server is already up to date; restarting now...');
+                if (status) status.textContent = reinstall
+                    ? 'Server reinstalled; restarting now...'
+                    : (result.updated ? (result.forced ? 'Server updated and local changes overwritten; restarting now...' : 'Server updated; restarting now...') : 'Server is already up to date; restarting now...');
                 const restartResponse = await fetch('/restart', { method: 'POST' });
                 if (!restartResponse.ok) throw new Error(`Unable to restart the server (HTTP ${restartResponse.status})`);
                 setTimeout(() => location.reload(), 8000);
