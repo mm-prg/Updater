@@ -490,7 +490,7 @@
                 setTimeout(() => location.reload(), 8000);
             } catch (error) {
                 console.error('[Updater] Unable to restart the server:', error);
-                alert('Unable to restart the server. Please try again.');
+                alert('Unable to restart the server. Please update fm-dx-webserver and try again.');
                 button.disabled = false;
                 button.innerHTML = '<i class="fa-solid fa-arrow-rotate-right"></i>&nbsp;Restart server';
             }
