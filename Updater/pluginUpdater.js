@@ -716,7 +716,7 @@
             const action = reinstall ? 'reinstall' : 'update';
             const warning = reinstall
                 ? 'Reinstall the current FM-DX Webserver version and restart it? This restores all tracked server files and discards local changes to them. All listeners will be disconnected.'
-                : 'Update the FM-DX Webserver and restart it? All listeners will be disconnected. The update is cancelled if the server has local tracked changes.';
+                : 'Update the FM-DX Webserver and restart it? All listeners will be disconnected. The update is cancelled if the server working tree has local changes.';
             if (!confirm(warning)) return;
 
             button.disabled = true;

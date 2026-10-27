@@ -660,7 +660,10 @@ endpointsRouter.post('/plugins/Updater/update-server', express.json({ limit: '10
 
         const { stdout: workingTree } = await runGit(['status', '--porcelain']);
         if (!reinstall && workingTree.trim()) {
-            return res.status(409).json({ ok: false, error: 'The server has local tracked changes. Commit, stash, or discard them before updating.' });
+            return res.status(409).json({
+                ok: false,
+                error: `The server working tree has local changes. Commit, stash, or discard them before updating:\n${workingTree.trim()}`
+            });
         }
 
         if (reinstall) {
