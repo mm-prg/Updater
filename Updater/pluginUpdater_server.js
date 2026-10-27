@@ -9,7 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 const express = require('express');
 const https = require('https');
 const endpointsRouter = require('../../server/endpoints');
@@ -31,6 +31,63 @@ const repoDataPath = path.join(__dirname, 'repo_data.json'); // Static file (kno
 const overridesPath = path.join(__dirname, 'plugins_data.json'); // Dynamic file (new/modified)
 const settingsPath = path.join(configsDir, 'Updater.json'); // Global options file
 const pluginStatesPath = path.join(configsDir, 'plugin-states.json'); // Per-plugin enable/disable state
+const fmDxRepositoryUrl = 'https://github.com/noobishsvk/fm-dx-webserver';
+
+function runGit(args, cwd = serverRootDir) {
+    return new Promise((resolve, reject) => {
+        execFile('git', args, { cwd, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+            if (error) {
+                error.stdout = stdout;
+                error.stderr = stderr;
+                reject(error);
+                return;
+            }
+            resolve({ stdout: stdout || '', stderr: stderr || '' });
+        });
+    });
+}
+
+function runNpmInstall() {
+    const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    return new Promise((resolve, reject) => {
+        execFile(npmCommand, ['install'], { cwd: serverRootDir, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+            if (error) {
+                error.stdout = stdout;
+                error.stderr = stderr;
+                reject(error);
+                return;
+            }
+            resolve({ stdout: stdout || '', stderr: stderr || '' });
+        });
+    });
+}
+
+function copyOfficialServerFiles(sourceDir, targetDir, isRoot = true) {
+    const preservedRootEntries = new Set(['.git', 'node_modules', 'plugins', 'plugins_configs', 'config.json']);
+    for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+        if (isRoot && preservedRootEntries.has(entry.name)) continue;
+
+        const sourcePath = path.join(sourceDir, entry.name);
+        const targetPath = path.join(targetDir, entry.name);
+        if (entry.isDirectory()) {
+            fs.mkdirSync(targetPath, { recursive: true });
+            copyOfficialServerFiles(sourcePath, targetPath, false);
+        } else if (entry.isFile()) {
+            fs.copyFileSync(sourcePath, targetPath);
+        }
+    }
+}
+
+async function restoreFromOfficialClone() {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'fmdx-update-'));
+    const cloneDir = path.join(tempRoot, 'source');
+    try {
+        await runGit(['clone', '--depth', '1', fmDxRepositoryUrl, cloneDir], tempRoot);
+        copyOfficialServerFiles(cloneDir, serverRootDir);
+    } finally {
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+}
 
 // Ensure the settings directory exists
 if (!fs.existsSync(configsDir)) fs.mkdirSync(configsDir, { recursive: true });
@@ -577,6 +634,55 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json({ limit: '10
         // Log the failure and return a 500 error
         logError(`[Updater] Update failed for ${pluginName}:`, e);
         res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+/**
+ * Update the FM-DX Webserver checkout from its official GitHub repository.
+ * Updates are fast-forward-only. A normal update requires a clean working
+ * tree; the explicit reinstall action restores tracked files at the current revision.
+ */
+endpointsRouter.post('/plugins/Updater/update-server', express.json({ limit: '10kb' }), async (req, res) => {
+    try {
+        const reinstall = req.body?.reinstall === true;
+        if (!fs.existsSync(path.join(serverRootDir, '.git'))) {
+            await restoreFromOfficialClone();
+            await runNpmInstall();
+            logInfo(`[${pluginName}] FM-DX Webserver files restored from a temporary official Git clone.`);
+            return res.json({ ok: true, reinstalled: reinstall, updated: !reinstall, cloned: true });
+        }
+
+        const { stdout: remoteUrl } = await runGit(['remote', 'get-url', 'origin']);
+        const normalizedRemote = remoteUrl.trim().replace(/\/$/, '').replace(/\.git$/i, '').toLowerCase();
+        if (normalizedRemote !== fmDxRepositoryUrl) {
+            return res.status(409).json({ ok: false, error: 'The Git origin is not the official FM-DX Webserver repository.' });
+        }
+
+        const { stdout: workingTree } = await runGit(['status', '--porcelain']);
+        if (!reinstall && workingTree.trim()) {
+            return res.status(409).json({ ok: false, error: 'The server has local tracked changes. Commit, stash, or discard them before updating.' });
+        }
+
+        if (reinstall) {
+            await runGit(['reset', '--hard', 'HEAD']);
+            await runNpmInstall();
+            logInfo(`[${pluginName}] FM-DX Webserver files reinstalled from the current Git revision.`);
+            return res.json({ ok: true, reinstalled: true });
+        }
+
+        const { stdout: before } = await runGit(['rev-parse', 'HEAD']);
+        await runGit(['fetch', '--quiet', 'origin', 'main']);
+        await runGit(['merge', '--ff-only', 'FETCH_HEAD']);
+        await runNpmInstall();
+        const { stdout: after } = await runGit(['rev-parse', 'HEAD']);
+
+        const updated = before.trim() !== after.trim();
+        logInfo(`[${pluginName}] FM-DX Webserver ${updated ? 'updated' : 'is already up to date'} (${after.trim()}).`);
+        res.json({ ok: true, updated });
+    } catch (e) {
+        const details = (e.stderr || e.message || 'Unknown Git error').trim();
+        logError(`[${pluginName}] FM-DX Webserver update failed:`, details);
+        res.status(500).json({ ok: false, error: details });
     }
 });
 

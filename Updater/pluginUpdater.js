@@ -403,10 +403,14 @@
                 </div>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <div id="updater-status" class="updater-subtitle" style="color: #3fa9f5; font-weight: bold;">Scanning...</div>
+                <div>
+                    <div id="updater-status" class="updater-subtitle" style="color: #3fa9f5; font-weight: bold;">Scanning...</div>
+                    <div id="updater-server-status" aria-live="polite"></div>
+                </div>
                 <div style="display: flex; gap: 10px;">
-                    <button id="refresh-list-btn" class="updater-btn" style="width: fit-content; background: #333; color: #fff; border: 1px solid #444;" title="Re-scan the plugins directory to update the list"><i class="fa-solid fa-sync"></i> Refresh list</button>
+                    <button id="refresh-list-btn" class="updater-btn" style="width: fit-content; background: #333; color: #fff; border: 1px solid #444;" title="Re-scan the plugins directory to update the list"><i class="fa-solid fa-sync"></i>&nbsp;Refresh list</button>
                     <button id="add-plugin-btn" class="updater-btn updater-btn-primary" style="width: fit-content;" title="Install a new plugin by providing its GitHub repository URL">Add new plugin</button>
+                    <button id="restart-server-btn" class="updater-btn" style="width: fit-content; background: #8b1a1a; color: #fff; border: 1px solid #b22222;" title="Restart the FM-DX Webserver"><i class="fa-solid fa-arrow-rotate-right"></i>&nbsp;Restart server</button>
                 </div>
             </div>
             
@@ -470,6 +474,27 @@
             await refreshList();
         };
         document.getElementById('add-plugin-btn').onclick = () => openAddModal(currentPlugins);
+        document.getElementById('restart-server-btn').onclick = async () => {
+            if (!confirm('Restart the server? All listeners will be disconnected.')) return;
+
+            const button = document.getElementById('restart-server-btn');
+            button.disabled = true;
+            button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>&nbsp;Restarting...';
+
+            try {
+                const response = await fetch('/restart', { method: 'POST' });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const status = document.getElementById('updater-status');
+                if (status) status.textContent = 'Server is restarting; the page will reload shortly.';
+                setTimeout(() => location.reload(), 8000);
+            } catch (error) {
+                console.error('[Updater] Unable to restart the server:', error);
+                alert('Unable to restart the server. Please try again.');
+                button.disabled = false;
+                button.innerHTML = '<i class="fa-solid fa-arrow-rotate-right"></i>&nbsp;Restart server';
+            }
+        };
         document.getElementById('updater-options-btn').onclick = (event) => toggleOptionsDropdown(event);
         document.getElementById('updater-config-btn').onclick = (event) => toggleConfigFilesDropdown(event);
         function createOpenPluginListButton(modalContainer) {
@@ -687,6 +712,40 @@
             }
         }
 
+        async function maintainServer(reinstall, button) {
+            const action = reinstall ? 'reinstall' : 'update';
+            const warning = reinstall
+                ? 'Reinstall the current FM-DX Webserver version and restart it? This restores all tracked server files and discards local changes to them. All listeners will be disconnected.'
+                : 'Update the FM-DX Webserver and restart it? All listeners will be disconnected. The update is cancelled if the server has local tracked changes.';
+            if (!confirm(warning)) return;
+
+            button.disabled = true;
+            button.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>&nbsp;${reinstall ? 'Reinstalling...' : 'Updating...'}`;
+
+            try {
+                const response = await fetch('/plugins/Updater/update-server', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reinstall })
+                });
+                const result = await response.json();
+                if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+
+                const status = document.getElementById('updater-status');
+                if (status) status.textContent = reinstall ? 'Server reinstalled; restarting now...' : (result.updated ? 'Server updated; restarting now...' : 'Server is already up to date; restarting now...');
+                const restartResponse = await fetch('/restart', { method: 'POST' });
+                if (!restartResponse.ok) throw new Error(`Unable to restart the server (HTTP ${restartResponse.status})`);
+                setTimeout(() => location.reload(), 8000);
+            } catch (error) {
+                console.error(`[Updater] Unable to ${action} the server:`, error);
+                alert(`Unable to ${action} the server: ${error.message}`);
+                button.disabled = false;
+                button.innerHTML = reinstall
+                    ? '<i class="fa-solid fa-arrows-rotate"></i>&nbsp;Reinstall server'
+                    : '<i class="fa-solid fa-download"></i>&nbsp;Update server';
+            }
+        }
+
         async function checkServerUpdate(localVer) {
             const status = document.getElementById('updater-status');
             if (!status) return;
@@ -698,23 +757,20 @@
                 const pkg = await res.json();
                 const remoteVer = pkg.version;
 
-                // Remove existing server status if any
-                const existing = document.getElementById('updater-server-status');
-                if (existing) existing.remove();
-
-                const serverInfo = document.createElement('div');
-                serverInfo.id = 'updater-server-status';
+                const serverInfo = document.getElementById('updater-server-status');
+                if (!serverInfo) return;
                 serverInfo.style.cssText = 'font-size: 11px; margin-top: 5px; padding-top: 5px; border-top: 1px solid #333;';
 
                 if (remoteVer && isNewer(localVer, remoteVer)) {
                     serverInfo.style.color = '#fe0830';
                     serverInfo.style.fontWeight = 'bold';
-                    serverInfo.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Server update available: v${remoteVer} (local: v${localVer}) <a href="https://github.com/NoobishSVK/fm-dx-webserver" target="_blank" style="color:#3fa9f5; text-decoration:underline; margin-left:5px;">Repo</a>`;
+                    serverInfo.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Server update available: v${remoteVer} (local: v${localVer}) <a href="https://github.com/NoobishSVK/fm-dx-webserver" target="_blank" style="color:#3fa9f5; text-decoration:underline; margin-left:5px;">Repo</a><button id="updater-server-update-btn" class="updater-btn updater-btn-small" style="background:#8b1a1a; color:#fff; margin-left:8px;" title="Download the official FM-DX Webserver update and restart the server"><i class="fa-solid fa-download"></i>&nbsp;Update server</button>`;
+                    serverInfo.querySelector('#updater-server-update-btn').onclick = () => maintainServer(false, serverInfo.querySelector('#updater-server-update-btn'));
                 } else {
                     serverInfo.style.color = '#777';
-                    serverInfo.innerHTML = `<i class="fa-solid fa-check"></i> Server version: v${localVer} (Up to date)`;
+                    serverInfo.innerHTML = `<i class="fa-solid fa-check"></i> Server version: v${localVer} (Up to date) <a href="https://github.com/NoobishSVK/fm-dx-webserver" target="_blank" style="color:#3fa9f5; text-decoration:underline; margin-left:5px;">Repo</a><button id="updater-server-reinstall-btn" class="updater-btn updater-btn-small" style="background:#444; color:#fff; margin-left:8px;" title="Restore all tracked files of the installed FM-DX Webserver version and restart the server"><i class="fa-solid fa-arrows-rotate"></i>&nbsp;Reinstall server</button>`;
+                    serverInfo.querySelector('#updater-server-reinstall-btn').onclick = () => maintainServer(true, serverInfo.querySelector('#updater-server-reinstall-btn'));
                 }
-                status.appendChild(serverInfo);
             } catch (e) {
                 console.error('[Updater] Server version check failed:', e);
             }
