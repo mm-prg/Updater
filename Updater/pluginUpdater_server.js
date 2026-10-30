@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.3.5dev)
+ * Updater Plugin for FM-DX Webserver (v. 0.3.6dev)
  * ************************************************
  */
 
@@ -523,6 +523,7 @@ endpointsRouter.post('/plugins/Updater/plugin-state', express.json({ limit: '10m
             throw new Error('The plugin configuration was not saved');
         }
 
+        invalidateInstalledPluginListCache();
         res.json({ ok: true, restartRequired: true });
     } catch (e) {
         logError(`[${pluginName}] Error saving plugin state:`, e);
@@ -568,7 +569,10 @@ endpointsRouter.post('/plugins/Updater/save-override', express.json({ limit: '10
             ...(skipFiles !== undefined && { skipFiles })
         };
 
-        if (saveOverrides(overrides)) res.json({ ok: true, rateLimit: lastRateLimit });
+        if (saveOverrides(overrides)) {
+            invalidateInstalledPluginListCache();
+            res.json({ ok: true, rateLimit: lastRateLimit });
+        }
         else res.status(500).json({ ok: false, rateLimit: lastRateLimit });
     } catch (e) {
         logError(`[${pluginName}] Error in save-override:`, e);
@@ -672,6 +676,7 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json({ limit: '10
 
         // Return the summary of changes to the frontend
         logInfo(`[Updater] Plugin download completed for ${pluginName}. Files downloaded: ${downloadedList.length}, skippedBySkipFiles: ${skippedBySkipFiles.length}, notDownloadedFiles: ${notDownloadedList.length}`);
+        invalidateInstalledPluginListCache();
         res.json({ ok: true, files: downloadedList, notDownloadedFiles: notDownloadedList, skippedBySkipFiles: skippedBySkipFiles || [], rateLimit: lastRateLimit });
     } catch (e) {
         // Log the failure and return a 500 error
@@ -994,6 +999,7 @@ endpointsRouter.post('/plugins/Updater/save-file', express.json({ limit: '10mb' 
             fs.writeFileSync(filePath, content, 'utf8');
             logInfo(`[${pluginName}] File saved: ${filePath}`);
         }
+        if (baseDir === pluginsDir) invalidateInstalledPluginListCache();
         res.json({ ok: true });
     } catch (e) {
         logError(`[${pluginName}] Error saving file ${filePath}:`, e);
@@ -1040,6 +1046,7 @@ endpointsRouter.post('/plugins/Updater/delete-file', express.json({ limit: '10mb
     try {
         fs.unlinkSync(filePath);
         logInfo(`[${pluginName}] File deleted: ${filePath}`);
+        if (baseDir === pluginsDir) invalidateInstalledPluginListCache();
         res.json({ ok: true });
     } catch (e) {
         logError(`[${pluginName}] Error deleting file ${filePath}:`, e);
@@ -1157,6 +1164,7 @@ endpointsRouter.post('/plugins/Updater/delete-plugin', express.json({ limit: '10
         }
 
         // Return success confirmation to the client
+        invalidateInstalledPluginListCache();
         res.json({ ok: true });
     } catch (e) {
         // Handle any file system or permission errors
@@ -1230,7 +1238,30 @@ endpointsRouter.post('/plugins/Updater/terminal-command', express.json({ limit: 
 /**
  * Endpoint to list all installed plugins. Automatically discovers missing metadata if a repo URL is known.
  */
-endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
+let installedPluginListCache = null;
+let installedPluginListScan = null;
+
+function invalidateInstalledPluginListCache() {
+    installedPluginListCache = null;
+    installedPluginListScan = null;
+}
+
+async function getInstalledPluginList() {
+    if (installedPluginListCache) return installedPluginListCache;
+    if (installedPluginListScan) return installedPluginListScan;
+
+    let pendingScan;
+    pendingScan = scanInstalledPlugins().then(result => {
+        if (installedPluginListScan === pendingScan) installedPluginListCache = result;
+        return result;
+    }).finally(() => {
+        if (installedPluginListScan === pendingScan) installedPluginListScan = null;
+    });
+    installedPluginListScan = pendingScan;
+    return pendingScan;
+}
+
+async function scanInstalledPlugins() {
     try {
         logInfo(`[${pluginName}] Scanning directory: ${pluginsDir}`);
         const entries = fs.readdirSync(pluginsDir, { withFileTypes: true });
@@ -1464,11 +1495,23 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
             } catch (e) { }
         }
 
-        res.json({ plugins: pluginList, rateLimit: lastRateLimit, serverVersion });
+        return { plugins: pluginList, rateLimit: lastRateLimit, serverVersion };
     } catch (e) {
         logError(`[${pluginName}] Failed to read plugins directory:`, e);
+        throw e;
+    }
+}
+
+endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
+    try {
+        res.json(await getInstalledPluginList());
+    } catch {
         res.status(500).json([]);
     }
+});
+
+setImmediate(() => {
+    getInstalledPluginList().catch(() => {});
 });
 
 // logInfo(`[${pluginName}] Backend initialized. Scanning directory: ${pluginsDir}`);

@@ -8,7 +8,7 @@
 "use strict";
 
 (async () => {
-    const pluginVersion = '0.3.5dev';
+    const pluginVersion = '0.3.6dev';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg';
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -307,12 +307,13 @@
         const setupPluginSelect = isOnSetupPage ? document.getElementById('plugins') : null;
 
         const normalizeFrontEndPath = value => String(value || '').replace(/\\/g, '/').replace(/^\.?\//, '').toLowerCase();
+        const getSetupPluginPath = option => normalizeFrontEndPath(option.dataset.name || option.value);
 
         function syncSetupPluginSelection(plugin) {
             if (!setupPluginSelect || !plugin.frontEndPath) return;
             const targetPath = normalizeFrontEndPath(plugin.frontEndPath);
             Array.from(setupPluginSelect.options).forEach(option => {
-                if (normalizeFrontEndPath(option.dataset.name) === targetPath) {
+                if (getSetupPluginPath(option) === targetPath) {
                     option.selected = plugin.isEnabled !== false;
                 }
             });
@@ -322,7 +323,7 @@
             if (!setupPluginSelect || currentPlugins.length === 0) return;
             const enabledPaths = new Set(
                 Array.from(setupPluginSelect.selectedOptions)
-                    .map(option => normalizeFrontEndPath(option.dataset.name))
+                    .map(getSetupPluginPath)
                     .filter(Boolean)
             );
             let changed = false;
@@ -732,6 +733,7 @@
                 if (settings.advancedMode && hasGitHubRepository && descriptorPath) {
                     const commitsButton = document.createElement('button');
                     commitsButton.className = 'updater-btn updater-btn-small updater-plugin-commits-btn';
+                    commitsButton.style.cssText = 'background:#444; color:#fff;';
                     commitsButton.textContent = 'Commits';
                     commitsButton.title = `Install a previous version of ${p.name}`;
                     commitsButton.onclick = () => openPluginCommitsModal(p, commitsButton);
@@ -1004,6 +1006,7 @@
                     isListLoaded = true;
                     if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
                     sortPlugins(sortState.key, false);
+                    syncUpdaterPluginStatesFromSetup();
                     const status = document.getElementById('updater-status');
                     if (status) {
                         status.innerHTML = `<div>Detected ${currentPlugins.length} plugins installed in the system.</div>`;

@@ -74,6 +74,7 @@ When started for the first time, it will try to automatically retrieve the URL o
 - **Update**: Highlighted in red when a newer version is available. Just click it to automatically download the new version and to save the new files in the plugins directory of the server.
 - **Reinstall**: Allows you to download again all files for the current version. 
 - **Edit**: Add or modify the GitHub repository URL. Clicking the verify button checks the URL and automatically detects the plugin descriptor file and the plugin directory. 
+- **Enabled / Disabled**: Shows whether the plugin's frontend path is enabled in the FM-DX Webserver configuration. Click the button to add or remove that path from `config.json`. A server restart may be required before the change is applied.
 - **Delete**: Removes the plugin's descriptor file and its associated data directory from the server.
 - **Explore**: Open the file manager to browse the plugin's local directory, view source code, edit files, or delete them.
 
