@@ -303,6 +303,7 @@
         let currentPlugins = [];
         let isListLoaded = false;
         let refreshListPromise = null;
+        const isOnSetupPage = window.location.pathname.includes('/setup');
         const setupPluginSelect = isOnSetupPage ? document.getElementById('plugins') : null;
 
         const normalizeFrontEndPath = value => String(value || '').replace(/\\/g, '/').replace(/^\.?\//, '').toLowerCase();
@@ -370,7 +371,6 @@
         const isAdmin = bodyText.includes("You are logged in as an administrator.") ||
             bodyText.includes("You are logged in as an adminstrator.");
 
-        const isOnSetupPage = window.location.pathname.includes('/setup');
         const isMainPage = window.location.pathname === '/' || window.location.pathname.endsWith('/index.html') || window.location.pathname === '';
 
         // This shortcut bar is governed only by its own setting, so regular users can see it too.
