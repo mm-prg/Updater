@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.3.3dev)
+ * Updater Plugin for FM-DX Webserver (v. 0.3.4dev)
  * ************************************************
  */
 
@@ -14,6 +14,7 @@ const express = require('express');
 const https = require('https');
 const endpointsRouter = require('../../server/endpoints');
 const { logInfo, logError } = require('../../server/console');
+const { serverConfig, configUpdate, configPath } = require('../../server/server_config');
 
 const pluginName = "Updater";
 // The script is located in main/plugins/Updater/
@@ -32,7 +33,6 @@ const serverStartTime = Date.now();
 const repoDataPath = path.join(__dirname, 'repo_data.json'); // Static file (known)
 const overridesPath = path.join(__dirname, 'plugins_data.json'); // Dynamic file (new/modified)
 const settingsPath = path.join(configsDir, 'Updater.json'); // Global options file
-const pluginStatesPath = path.join(configsDir, 'plugin-states.json'); // Per-plugin enable/disable state
 const fmDxRepositoryUrl = 'https://github.com/noobishsvk/fm-dx-webserver';
 
 function runGit(args, cwd = serverRootDir) {
@@ -125,7 +125,6 @@ if (!fs.existsSync(configsDir)) fs.mkdirSync(configsDir, { recursive: true });
 // Ensure the plugins_data.json file exists to avoid read/write errors
 if (!fs.existsSync(overridesPath)) fs.writeFileSync(overridesPath, JSON.stringify({}, null, 2), 'utf8');
 if (!fs.existsSync(repoDataPath)) fs.writeFileSync(repoDataPath, JSON.stringify({}, null, 2), 'utf8');
-if (!fs.existsSync(pluginStatesPath)) fs.writeFileSync(pluginStatesPath, JSON.stringify({}, null, 2), 'utf8');
 
 // Increase payload limit for the core server endpoint /data_plugins
 // to prevent 413 errors when saving a long list of plugins.
@@ -150,18 +149,10 @@ function readJsonFile(filePath) {
     }
 }
 
-function readPluginStates() {
-    return readJsonFile(pluginStatesPath);
-}
-
-function savePluginStates(states) {
-    try {
-        fs.writeFileSync(pluginStatesPath, JSON.stringify(states || {}, null, 2), 'utf8');
-        return true;
-    } catch (e) {
-        logError(`[${pluginName}] Error saving plugin states to ${pluginStatesPath}:`, e);
-        return false;
-    }
+function getConfiguredPluginPaths() {
+    return Array.isArray(serverConfig.plugins)
+        ? serverConfig.plugins.filter(pluginPath => typeof pluginPath === 'string')
+        : [];
 }
 
 /**
@@ -502,16 +493,37 @@ endpointsRouter.post('/plugins/Updater/settings', express.json({ limit: '10mb' }
  */
 endpointsRouter.post('/plugins/Updater/plugin-state', express.json({ limit: '10mb' }), (req, res) => {
     try {
-        const pluginName = req.body?.pluginName;
-        const enabled = req.body?.enabled;
-        if (!pluginName || typeof enabled !== 'boolean') {
-            return res.status(400).json({ ok: false, error: 'pluginName and enabled are required' });
+        if (!req.session?.isAdminAuthenticated) {
+            return res.status(403).json({ ok: false, error: 'Administrator authentication is required' });
         }
 
-        const states = readPluginStates();
-        states[pluginName] = enabled;
-        const saved = savePluginStates(states);
-        res.json({ ok: saved });
+        const frontEndPath = req.body?.frontEndPath;
+        const enabled = req.body?.enabled;
+        if (typeof frontEndPath !== 'string' || !frontEndPath.trim() || typeof enabled !== 'boolean') {
+            return res.status(400).json({ ok: false, error: 'frontEndPath and enabled are required' });
+        }
+
+        const resolvedPath = path.resolve(pluginsDir, frontEndPath);
+        const relativePath = path.relative(pluginsDir, resolvedPath);
+        if (relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath) ||
+            !fs.existsSync(resolvedPath) || !fs.statSync(resolvedPath).isFile()) {
+            return res.status(400).json({ ok: false, error: 'Plugin frontend file was not found' });
+        }
+
+        const configuredPaths = getConfiguredPluginPaths();
+        const updatedPaths = enabled
+            ? Array.from(new Set([...configuredPaths, frontEndPath]))
+            : configuredPaths.filter(pluginPath => pluginPath !== frontEndPath);
+
+        configUpdate({ plugins: updatedPaths });
+        const savedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        if (!Array.isArray(savedConfig.plugins) ||
+            savedConfig.plugins.length !== updatedPaths.length ||
+            !savedConfig.plugins.every((pluginPath, index) => pluginPath === updatedPaths[index])) {
+            throw new Error('The plugin configuration was not saved');
+        }
+
+        res.json({ ok: true, restartRequired: true });
     } catch (e) {
         logError(`[${pluginName}] Error saving plugin state:`, e);
         res.status(500).json({ ok: false, error: e.message });
@@ -1247,7 +1259,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
         };
 
         const overrides = loadOverrides();
-        const pluginStates = readPluginStates();
+        const configuredPluginPaths = getConfiguredPluginPaths();
         let needsSave = false;
 
         const processedLogicalNames = new Set();
@@ -1311,7 +1323,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                                 fullPath: filePath,
                                 localDescriptorName: localDescriptorName, // Store for matching
                                 logicalName: pluginNameFromConfig,
-                                isEnabled: pluginStates[pluginNameFromConfig] ?? pluginStates[localDescriptorName] ?? true,
+                                isEnabled: configuredPluginPaths.includes(fullConfig.frontEndPath),
                                 // Default branch for this entry is 'main'
                                 branch: 'main',
                                 hasStaleFiles: hasStaleFiles, // Add this new property
@@ -1418,7 +1430,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                     ...localInfo.config,
                     name: ovrKey,
                     logicalName: logicalName,
-                    isEnabled: pluginStates[logicalName] ?? pluginStates[localInfo.localDescriptorName] ?? true,
+                    isEnabled: configuredPluginPaths.includes(localInfo.config.frontEndPath),
                     fileName: localInfo.localDescriptorName,
                     fullPath: localInfo.filePath,
                     localDescriptorName: localInfo.localDescriptorName,

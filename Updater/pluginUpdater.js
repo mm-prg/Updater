@@ -8,7 +8,7 @@
 "use strict";
 
 (async () => {
-    const pluginVersion = '0.3.3dev';
+    const pluginVersion = '0.3.4dev';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg';
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -447,7 +447,7 @@
             <ul id="updater-list-body" class="updater-list"></ul>
 
             <div style="font-size: 11px; color: #666; margin-top: 15px; padding-top: 10px; border-top: 1px solid #333; text-align: center;">
-                <i class="fa-solid fa-circle-info"></i> <b>Tip:</b> Use <b>Edit</b> to link a GitHub repository, then <b>Update</b> to sync files. <b>Explore</b> allows you to manage local files.
+                <i class="fa-solid fa-circle-info"></i> <b>Tip:</b> Enable/Disable saves the plugin selection to the server configuration; some changes require a server restart. Use <b>Edit</b> to link a GitHub repository, then <b>Update</b> to sync files. <b>Explore</b> allows you to manage local files.
             </div>
         `;
 
@@ -489,7 +489,7 @@
 
         document.getElementById('refresh-list-btn').onclick = async () => {
             const status = document.getElementById('updater-status');
-            if (status) status.textContent = "Refreshing list, please click on 'Refresh list' in a few seconds";
+            if (status) status.textContent = "Still checking, please click on 'Refresh list' in a few seconds";
             await refreshList();
         };
         document.getElementById('add-plugin-btn').onclick = () => openAddModal(currentPlugins);
@@ -1399,7 +1399,7 @@
                         <div style="display:flex; gap:10px;">
                             <button id="disclaimer-btn" class="updater-btn" style="padding:12px 16px; font-size:14px; white-space:nowrap; background:#333; color:#ff6;" title="Important, please read me!">DISCLAIMER</button>
                             <button id="installed-filter-btn" class="updater-btn" style="padding:12px 16px; font-size:14px; white-space:nowrap; background:#333; color:#fff;">Showing: not installed</button>
-                            <button id="custom-add-btn" class="updater-btn updater-btn-primary" style="padding:12px 16px; font-size:14px; white-space:nowrap; width:auto; display:inline-flex; align-items:center; justify-content:center;">Add custom plugin</button>
+                            <button id="custom-add-btn" class="updater-btn updater-btn-primary" style="padding:12px 16px; font-size:14px; white-space:nowrap; width:auto; display:inline-flex; align-items:center; justify-content:center;">Add an unlisted plugin</button>
                             <button id="cancel-add" class="updater-btn updater-btn-danger" style="padding:12px 16px; font-size:14px;">Cancel</button>
                         </div>
                     </div>
@@ -2919,19 +2919,26 @@
             if (overlay) overlay.style.display = 'none';
         }
 
-        async function togglePluginEnabled(p) {
+        async function togglePluginEnabled(p, button) {
             const nextEnabled = p.isEnabled !== false;
+            button.disabled = true;
             try {
                 const res = await fetch('/plugins/Updater/plugin-state', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ pluginName: p.logicalName || p.name || p.fileName, enabled: !nextEnabled })
+                    body: JSON.stringify({ frontEndPath: p.frontEndPath, enabled: !nextEnabled })
                 });
-                if (!res.ok) throw new Error('Unable to save plugin state');
+                const result = await res.json();
+                if (!res.ok || !result.ok) {
+                    throw new Error(result.error || 'Unable to save plugin state');
+                }
                 p.isEnabled = !nextEnabled;
                 renderPluginRows();
             } catch (e) {
-                alert('Unable to change the plugin state.');
+                const message = e instanceof Error ? e.message : String(e);
+                alert(`Unable to change the plugin state: ${message}`);
+            } finally {
+                if (button.isConnected) button.disabled = false;
             }
         }
 
@@ -2965,9 +2972,7 @@
                     </div>
                     <div style="min-width: 320px; flex-shrink: 0; margin-left: 10px; display: flex; justify-content: flex-end;">
                         <div class="actions-container" style="display: flex; gap: 3px; align-items: center; flex-wrap: nowrap; justify-content: flex-end;">
-                            ${/* TEMP DISABLED - rimuovi questo ${ e il } finale per riattivare il bottone
-                            `<button class="updater-btn updater-btn-small updater-toggle-btn" style="background:${(p.isEnabled !== false) ? '#1f8f1f' : '#666'}; color:#fff;" title="${(p.isEnabled !== false) ? 'Disable this plugin' : 'Enable this plugin'}">${(p.isEnabled !== false) ? 'Enabled' : 'Disabled'}</button>`
-                            */ ''}
+                            <button class="updater-btn updater-btn-small updater-toggle-btn" aria-pressed="${p.isEnabled !== false}" style="background:${(p.isEnabled !== false) ? '#1f8f1f' : '#666'}; color:#fff;" title="${(p.isEnabled !== false) ? 'Disable this plugin (server restart required)' : 'Enable this plugin (server restart required)'}">${(p.isEnabled !== false) ? 'Enabled' : 'Disabled'}</button>
                             <button class="updater-btn updater-btn-small updater-edit-btn" style="background:#444; color:#fff;" title="Modify GitHub repository, file paths, or local directory for this plugin">Edit</button>
                             ${settings.advancedMode ? '<button class="updater-btn updater-btn-small updater-explore-btn" style="background:#444; color:#fff;" title="Browse and manage plugin files, view code, or edit configurations">Explore</button>' : ''}
                             
@@ -3006,7 +3011,7 @@
                 if (exploreBtn) exploreBtn.onclick = viewFileAction;
 
                 const toggleBtn = li.querySelector('.updater-toggle-btn');
-                if (toggleBtn) toggleBtn.onclick = () => togglePluginEnabled(p);
+                if (toggleBtn) toggleBtn.onclick = () => togglePluginEnabled(p, toggleBtn);
 
                 const delBtn = li.querySelector('.updater-delete-btn');
                 if (delBtn) delBtn.onclick = () => performDelete(p);
