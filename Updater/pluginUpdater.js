@@ -8,7 +8,7 @@
 "use strict";
 
 (async () => {
-    const pluginVersion = '0.3.4dev';
+    const pluginVersion = '0.3.5dev';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg';
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -303,6 +303,47 @@
         let currentPlugins = [];
         let isListLoaded = false;
         let refreshListPromise = null;
+        const setupPluginSelect = isOnSetupPage ? document.getElementById('plugins') : null;
+
+        const normalizeFrontEndPath = value => String(value || '').replace(/\\/g, '/').replace(/^\.?\//, '').toLowerCase();
+
+        function syncSetupPluginSelection(plugin) {
+            if (!setupPluginSelect || !plugin.frontEndPath) return;
+            const targetPath = normalizeFrontEndPath(plugin.frontEndPath);
+            Array.from(setupPluginSelect.options).forEach(option => {
+                if (normalizeFrontEndPath(option.dataset.name) === targetPath) {
+                    option.selected = plugin.isEnabled !== false;
+                }
+            });
+        }
+
+        function syncUpdaterPluginStatesFromSetup() {
+            if (!setupPluginSelect || currentPlugins.length === 0) return;
+            const enabledPaths = new Set(
+                Array.from(setupPluginSelect.selectedOptions)
+                    .map(option => normalizeFrontEndPath(option.dataset.name))
+                    .filter(Boolean)
+            );
+            let changed = false;
+            currentPlugins.forEach(plugin => {
+                if (!plugin.frontEndPath) return;
+                const isEnabled = enabledPaths.has(normalizeFrontEndPath(plugin.frontEndPath));
+                if (plugin.isEnabled !== isEnabled) {
+                    plugin.isEnabled = isEnabled;
+                    changed = true;
+                }
+            });
+            if (changed) renderPluginRows();
+        }
+
+        if (setupPluginSelect) {
+            setupPluginSelect.addEventListener('change', syncUpdaterPluginStatesFromSetup);
+            setupPluginSelect.addEventListener('mousedown', event => {
+                if (event.target instanceof HTMLOptionElement) {
+                    setTimeout(syncUpdaterPluginStatesFromSetup, 0);
+                }
+            });
+        }
 
         // Retrieve settings from the server (default advancedMode: true)
         let settings = { showInPluginPanel: true, showInHeader: true, showInSetup: true, showInServerDescription: true, advancedMode: true, customButtons: [] };
@@ -2933,6 +2974,7 @@
                     throw new Error(result.error || 'Unable to save plugin state');
                 }
                 p.isEnabled = !nextEnabled;
+                syncSetupPluginSelection(p);
                 renderPluginRows();
             } catch (e) {
                 const message = e instanceof Error ? e.message : String(e);
@@ -2954,7 +2996,8 @@
                 li.innerHTML = `
                     <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden; min-width: 0;">
                         <div class="updater-title" style="flex: 0 0 24%; color: #3fa9f5; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; min-width: 0; text-align: left !important; display: flex; align-items: center; gap: 6px;" title="${p.fullPath || ''}">
-                            ${p.name || 'Unknown'}
+                            <button type="button" class="updater-toggle-btn" aria-pressed="${p.isEnabled !== false}" aria-label="${(p.isEnabled !== false) ? `Disable ${p.name || 'plugin'} (server restart required)` : `Enable ${p.name || 'plugin'} (server restart required)`}" style="flex: 0 0 10px; width: 10px; min-width: 10px; height: 10px; padding: 0; border: 1px solid rgba(255,255,255,.7); border-radius: 50%; background:${(p.isEnabled !== false) ? '#1f8f1f' : '#d33'}; cursor: pointer;" title="${(p.isEnabled !== false) ? 'Disable this plugin (server restart required)' : 'Enable this plugin (server restart required)'}"></button>
+                            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;">${p.name || 'Unknown'}</span>
                             ${p.hasStaleFiles ? '<i class="fa-solid fa-triangle-exclamation" style="color: #ffaa00; font-size: 12px;" title="Node.js Cache Out of Sync: some backend files have been modified on disk but are not yet reloaded in memory. A server restart is required."></i>' : ''}
                         </div>
                         <div class="updater-subtitle" style="flex: 0 0 15%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
@@ -2972,7 +3015,6 @@
                     </div>
                     <div style="min-width: 320px; flex-shrink: 0; margin-left: 10px; display: flex; justify-content: flex-end;">
                         <div class="actions-container" style="display: flex; gap: 3px; align-items: center; flex-wrap: nowrap; justify-content: flex-end;">
-                            <button class="updater-btn updater-btn-small updater-toggle-btn" aria-pressed="${p.isEnabled !== false}" style="background:${(p.isEnabled !== false) ? '#1f8f1f' : '#666'}; color:#fff;" title="${(p.isEnabled !== false) ? 'Disable this plugin (server restart required)' : 'Enable this plugin (server restart required)'}">${(p.isEnabled !== false) ? 'Enabled' : 'Disabled'}</button>
                             <button class="updater-btn updater-btn-small updater-edit-btn" style="background:#444; color:#fff;" title="Modify GitHub repository, file paths, or local directory for this plugin">Edit</button>
                             ${settings.advancedMode ? '<button class="updater-btn updater-btn-small updater-explore-btn" style="background:#444; color:#fff;" title="Browse and manage plugin files, view code, or edit configurations">Explore</button>' : ''}
                             
