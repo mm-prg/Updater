@@ -1,6 +1,6 @@
 /**
  * ************************************************
- * Updater Plugin for FM-DX Webserver (v. 0.3.2dev)
+ * Updater Plugin for FM-DX Webserver (v. 0.3.3dev)
  * ************************************************
  */
 
@@ -22,6 +22,8 @@ const pluginsDir = path.resolve(__dirname, '..');
 // To reach 'main/', we go up two levels.
 const serverRootDir = path.resolve(__dirname, '..', '..');
 const configsDir = path.resolve(serverRootDir, 'plugins_configs');
+const SERVER_COMMIT_SCAN_LIMIT = 100;
+const SERVER_VERSION_LIMIT = 5;
 
 // Track server start time to detect stale cache
 const serverStartTime = Date.now();
@@ -60,6 +62,35 @@ function runNpmInstall() {
             resolve({ stdout: stdout || '', stderr: stderr || '' });
         });
     });
+}
+
+function parseServerCommits(output) {
+    return output.split(/\r?\n/).filter(Boolean).map(line => {
+        const [sha, message, date] = line.split('\0');
+        return { sha, message, date };
+    });
+}
+
+async function readRecentServerCommits(cwd, revision = 'HEAD') {
+    const { stdout } = await runGit(['log', `-${SERVER_COMMIT_SCAN_LIMIT}`, '--format=%H%x00%s%x00%cI', revision], cwd);
+    const commits = parseServerCommits(stdout);
+    const seenVersions = new Set();
+    const latestVersions = [];
+
+    for (const commit of commits) {
+        if (seenVersions.size >= SERVER_VERSION_LIMIT) break;
+        try {
+            const { stdout: packageJson } = await runGit(['show', `${commit.sha}:package.json`], cwd);
+            const version = JSON.parse(packageJson).version;
+            if (!version || seenVersions.has(version)) continue;
+            seenVersions.add(version);
+            latestVersions.push({ ...commit, version });
+        } catch {
+            continue;
+        }
+    }
+
+    return latestVersions;
 }
 
 function copyOfficialServerFiles(sourceDir, targetDir, isRoot = true) {
@@ -637,6 +668,70 @@ endpointsRouter.post('/plugins/Updater/update-plugin', express.json({ limit: '10
     }
 });
 
+endpointsRouter.get('/plugins/Updater/plugin-commits', async (req, res) => {
+    try {
+        const repoUrl = typeof req.query.repoUrl === 'string' ? req.query.repoUrl : '';
+        const descriptorPath = typeof req.query.descriptorPath === 'string' ? req.query.descriptorPath.replace(/\\/g, '/') : '';
+        const repoBranch = typeof req.query.branch === 'string' ? req.query.branch.trim() : '';
+        const parsedRepoUrl = new URL(repoUrl);
+        const repoParts = parsedRepoUrl.pathname.split('/').filter(Boolean);
+
+        if (parsedRepoUrl.protocol !== 'https:' || parsedRepoUrl.hostname !== 'github.com' || repoParts.length < 2) {
+            return res.status(400).json({ ok: false, error: 'A valid GitHub repository URL is required.' });
+        }
+
+        const owner = repoParts[0];
+        const repo = repoParts[1].replace(/\.git$/i, '');
+        if (!/^[A-Za-z0-9_.-]+$/.test(owner) || !/^[A-Za-z0-9_.-]+$/.test(repo)) {
+            return res.status(400).json({ ok: false, error: 'Invalid GitHub repository name.' });
+        }
+
+        const urlBranch = repoParts[2] === 'tree' ? repoParts.slice(3).join('/') : '';
+        const branch = repoBranch || urlBranch || 'main';
+        if (branch.length > 200 || /[\r\n]/.test(branch)) {
+            return res.status(400).json({ ok: false, error: 'Invalid repository branch.' });
+        }
+        if (!descriptorPath || descriptorPath.startsWith('/') || descriptorPath.split('/').some(part => part === '..')) {
+            return res.status(400).json({ ok: false, error: 'A repository-relative plugin descriptor path is required.' });
+        }
+
+        const apiCommits = await fetchGithubApi(
+            `https://api.github.com/repos/${owner}/${repo}/commits?sha=${encodeURIComponent(branch)}&per_page=100`
+        );
+        if (!Array.isArray(apiCommits)) throw new Error('GitHub returned an invalid commit list.');
+
+        const encodedDescriptorPath = descriptorPath.split('/').map(encodeURIComponent).join('/');
+        const seenVersions = new Set();
+        const latestVersions = [];
+        for (let index = 0; index < apiCommits.length && seenVersions.size < SERVER_VERSION_LIMIT; index += 10) {
+            const batch = await Promise.all(apiCommits.slice(index, index + 10).map(async item => {
+                const source = await fetchRawText(
+                    `https://raw.githubusercontent.com/${owner}/${repo}/${item.sha}/${encodedDescriptorPath}`
+                );
+                const versionMatch = source.match(/(?:(?:const|var|let)\s+)?(?:pluginVersion|version)\s*[:=]\s*['"]([^'"]+)['"]/);
+                return { item, version: versionMatch?.[1] || null };
+            }));
+
+            for (const { item, version } of batch) {
+                if (!version || seenVersions.has(version)) continue;
+                seenVersions.add(version);
+                latestVersions.push({
+                    sha: item.sha,
+                    version,
+                    message: (item.commit?.message || '').split(/\r?\n/, 1)[0],
+                    date: item.commit?.author?.date || item.commit?.committer?.date || ''
+                });
+                if (seenVersions.size >= SERVER_VERSION_LIMIT) break;
+            }
+        }
+
+        res.json({ ok: true, commits: latestVersions, rateLimit: lastRateLimit });
+    } catch (e) {
+        logError(`[${pluginName}] Unable to list plugin commits:`, e.message || e);
+        res.status(500).json({ ok: false, error: e.message || 'Unable to retrieve plugin commits.', rateLimit: lastRateLimit });
+    }
+});
+
 /**
  * Update the FM-DX Webserver checkout from its official GitHub repository.
  * Updates are fast-forward-only. A normal update requires a clean working
@@ -712,6 +807,109 @@ endpointsRouter.post('/plugins/Updater/update-server', express.json({ limit: '10
         const details = (e.stderr || e.message || 'Unknown Git error').trim();
         logError(`[${pluginName}] FM-DX Webserver update failed:`, details);
         res.status(500).json({ ok: false, error: details });
+    }
+});
+
+endpointsRouter.get('/plugins/Updater/server-commits', async (req, res) => {
+    let tempRoot;
+    try {
+        let repositoryDir = serverRootDir;
+        const hasGitRepository = fs.existsSync(path.join(serverRootDir, '.git'));
+
+        if (hasGitRepository) {
+            const { stdout: remoteUrl } = await runGit(['remote', 'get-url', 'origin']);
+            const normalizedRemote = remoteUrl.trim().replace(/\/$/, '').replace(/\.git$/i, '').toLowerCase();
+            if (normalizedRemote !== fmDxRepositoryUrl) {
+                return res.status(409).json({ ok: false, error: 'The Git origin is not the official FM-DX Webserver repository.' });
+            }
+            await runGit(['fetch', '--quiet', `--depth=${SERVER_COMMIT_SCAN_LIMIT}`, 'origin', 'main']);
+            repositoryDir = 'FETCH_HEAD';
+        } else {
+            tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'fmdx-commits-'));
+            repositoryDir = path.join(tempRoot, 'source');
+            await runGit(['clone', '--quiet', `--depth=${SERVER_COMMIT_SCAN_LIMIT}`, '--branch', 'main', fmDxRepositoryUrl, repositoryDir], tempRoot);
+        }
+
+        const commits = await readRecentServerCommits(hasGitRepository ? serverRootDir : repositoryDir, hasGitRepository ? repositoryDir : 'HEAD');
+        res.json({ ok: true, commits });
+    } catch (e) {
+        const details = (e.stderr || e.message || 'Unknown Git error').trim();
+        logError(`[${pluginName}] Unable to list FM-DX Webserver commits:`, details);
+        res.status(500).json({ ok: false, error: details });
+    } finally {
+        if (tempRoot) fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+});
+
+endpointsRouter.post('/plugins/Updater/install-server-commit', express.json({ limit: '10kb' }), async (req, res) => {
+    let tempRoot;
+    try {
+        const commit = typeof req.body?.commit === 'string' ? req.body.commit.toLowerCase() : '';
+        const force = req.body?.force === true;
+        if (!/^[a-f0-9]{40}$/.test(commit)) {
+            return res.status(400).json({ ok: false, error: 'A full 40-character commit SHA is required.' });
+        }
+
+        const hasGitRepository = fs.existsSync(path.join(serverRootDir, '.git'));
+        let repositoryDir = serverRootDir;
+        if (hasGitRepository) {
+            const { stdout: remoteUrl } = await runGit(['remote', 'get-url', 'origin']);
+            const normalizedRemote = remoteUrl.trim().replace(/\/$/, '').replace(/\.git$/i, '').toLowerCase();
+            if (normalizedRemote !== fmDxRepositoryUrl) {
+                return res.status(409).json({ ok: false, error: 'The Git origin is not the official FM-DX Webserver repository.' });
+            }
+            await runGit(['fetch', '--quiet', `--depth=${SERVER_COMMIT_SCAN_LIMIT}`, 'origin', 'main']);
+            const commits = await readRecentServerCommits(serverRootDir, 'FETCH_HEAD');
+            if (!commits.some(item => item.sha === commit)) {
+                return res.status(400).json({ ok: false, error: 'The selected commit is not among the five most recent official versions.' });
+            }
+
+            const { stdout: workingTree } = await runGit(['status', '--porcelain']);
+            if (workingTree.trim() && !force) {
+                return res.status(409).json({ ok: false, error: 'The server working tree has local changes.' });
+            }
+            if (force) {
+                const [{ stdout: untracked }, { stdout: changedPaths }] = await Promise.all([
+                    runGit(['ls-files', '--others', '--exclude-standard']),
+                    runGit(['diff', '--name-only', 'HEAD', commit])
+                ]);
+                const untrackedPaths = untracked.split(/\r?\n/).filter(Boolean);
+                const incomingPaths = changedPaths.split(/\r?\n/).filter(Boolean);
+                const conflicts = untrackedPaths.filter(untrackedPath => incomingPaths.some(incomingPath =>
+                    incomingPath === untrackedPath ||
+                    incomingPath.startsWith(`${untrackedPath}/`) ||
+                    untrackedPath.startsWith(`${incomingPath}/`)
+                ));
+                if (conflicts.length) {
+                    return res.status(409).json({
+                        ok: false,
+                        error: `Cannot install this version because it would overwrite untracked files:\n${conflicts.join('\n')}`
+                    });
+                }
+            }
+
+            await runGit(['reset', '--hard', commit]);
+        } else {
+            tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'fmdx-commit-install-'));
+            repositoryDir = path.join(tempRoot, 'source');
+            await runGit(['clone', '--quiet', `--depth=${SERVER_COMMIT_SCAN_LIMIT}`, '--branch', 'main', fmDxRepositoryUrl, repositoryDir], tempRoot);
+            const commits = await readRecentServerCommits(repositoryDir);
+            if (!commits.some(item => item.sha === commit)) {
+                return res.status(400).json({ ok: false, error: 'The selected commit is not among the five most recent official versions.' });
+            }
+            await runGit(['checkout', '--quiet', '--detach', commit], repositoryDir);
+            copyOfficialServerFiles(repositoryDir, serverRootDir);
+        }
+
+        await runNpmInstall();
+        logInfo(`[${pluginName}] FM-DX Webserver installed from commit ${commit}.`);
+        res.json({ ok: true, commit });
+    } catch (e) {
+        const details = (e.stderr || e.message || 'Unknown Git error').trim();
+        logError(`[${pluginName}] FM-DX Webserver historical install failed:`, details);
+        res.status(500).json({ ok: false, error: details });
+    } finally {
+        if (tempRoot) fs.rmSync(tempRoot, { recursive: true, force: true });
     }
 });
 
@@ -1076,7 +1274,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
                             if (!nameMatch) continue;
 
                             const pluginNameFromConfig = nameMatch[1].trim();
-                            logInfo(`[Updater] Local plugin detected: "${pluginNameFromConfig}" in file ${file}`);
+                            // logInfo(`[Updater] Local plugin detected: "${pluginNameFromConfig}" in file ${file}`);
 
                             // Avoid re-processing the same logical plugin if it has multiple files
                             if (processedLogicalNames.has(pluginNameFromConfig)) continue;
@@ -1177,7 +1375,7 @@ endpointsRouter.get('/plugins/Updater/list', async (req, res) => {
         }
 
         // --- Phase 2: Scan plugins_data.json to add all secondary branches (branch != main) ---
-//        logInfo(`[Updater] Local plugins detected on disk: [${Object.keys(localPluginsInfo).join(', ')}]`);
+        logInfo(`[Updater] Local plugins detected on disk: [${Object.keys(localPluginsInfo).join(', ')}]`);
         logInfo(`[Updater] Scanning plugins_data.json to add detected secondary branches...`);
 
         const jsonEntries = Object.entries(dynamicData);

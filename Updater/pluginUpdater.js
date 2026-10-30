@@ -8,13 +8,29 @@
 "use strict";
 
 (async () => {
-    const pluginVersion = '0.3.2dev';
+    const pluginVersion = '0.3.3dev';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg';
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
     let sortTimeout = null;
+    let showDevelopmentElements = false;
     const MAX_VERSION_CHECK_ATTEMPTS = 3;
     const descriptionPluginBarState = { initialized: false, wrapper: null, scrollArea: null, observer: null };
+
+    function updateDevelopmentElementVisibility() {
+        document.querySelectorAll('.updater-dev-only').forEach(element => {
+            element.hidden = !showDevelopmentElements;
+        });
+    }
+
+    window.addEventListener('keydown', event => {
+        const shortcutMatch = event.ctrlKey && event.altKey && event.code === 'KeyD' && !event.repeat;
+        if (shortcutMatch) {
+            event.preventDefault();
+            showDevelopmentElements = !showDevelopmentElements;
+            updateDevelopmentElementVisibility();
+        }
+    });
 
     function injectDescriptionPluginBarStyles() {
         if (document.getElementById('updater-description-plugin-bar-styles')) return;
@@ -286,6 +302,7 @@
     async function initUpdater() {
         let currentPlugins = [];
         let isListLoaded = false;
+        let refreshListPromise = null;
 
         // Retrieve settings from the server (default advancedMode: true)
         let settings = { showInPluginPanel: true, showInHeader: true, showInSetup: true, showInServerDescription: true, advancedMode: true, customButtons: [] };
@@ -344,6 +361,8 @@
             .updater-btn-primary { background: #3fa9f5 !important; color: #000 !important; }
             .updater-btn-danger { background: #fe0830 !important; color: #fff !important; }
             .updater-btn-small { display: inline-flex !important; align-items: center !important; justify-content: center !important; padding: 3px 6px !important; font-size: 10px !important; height: 22px !important; line-height: 1 !important; white-space: nowrap !important; width: auto !important; flex: 0 0 auto !important; margin: 0 !important; box-sizing: border-box !important; }
+            .updater-server-reinstall-btn, .updater-server-history-btn { margin-left: 8px !important; }
+            .updater-dev-only[hidden] { display: none !important; }
             .actions-container { display: flex !important; gap: 3px !important; align-items: center !important; flex-wrap: nowrap !important; justify-content: flex-end !important; width: auto !important; min-width: 0 !important; }
             .actions-container button, .actions-container a { display: inline-flex !important; align-items: center !important; justify-content: center !important; width: auto !important; height: 22px !important; flex: 0 0 auto !important; margin: 0 !important; padding: 3px 6px !important; font-size: 10px !important; box-sizing: border-box !important; line-height: 1 !important; white-space: nowrap !important; }
             .updater-title { color: #fff; margin: 0; font-size: 1.2em; font-weight: bold; box-sizing: border-box; }
@@ -515,15 +534,7 @@
                 const btn = document.getElementById(btnId);
                 if (btn) {
                     btn.classList.add('hide-phone', 'bg-color-2');
-                    btn.onclick = () => {
-                        const isVisible = modalContainer.style.display === 'block';
-                        modalContainer.style.display = isVisible ? 'none' : 'block';
-                        if (overlay) overlay.style.display = isVisible ? 'none' : 'block';
-
-                        if (!isVisible && !isListLoaded) {
-                            alert("The local plugin list is not ready yet. Please try again in a few seconds.");
-                        }
-                    };
+                    btn.onclick = () => togglePluginListUI(modalContainer);
                 } else if (attempts < 30) {
                     setTimeout(() => tryAdd(attempts + 1), 300);
                 }
@@ -582,18 +593,33 @@
                 menuButton.insertAdjacentElement("beforebegin", headerBtn);
                 //                console.log("[Updater] Header button inserted successfully.");
 
-                headerBtn.onclick = () => {
-                    const overlay = document.getElementById(`${pluginId}-overlay`);
-                    const isVisible = modalContainer.style.display === 'block';
-                    modalContainer.style.display = isVisible ? 'none' : 'block';
-                    if (overlay) overlay.style.display = isVisible ? 'none' : 'block';
-
-                    if (!isVisible && !isListLoaded) {
-                        alert("The local plugin list is not ready yet. Please try again in a few seconds.");
-                    }
-                };
+                headerBtn.onclick = () => togglePluginListUI(modalContainer);
             };
             tryAddHeader();
+        }
+
+        async function togglePluginListUI(modalContainer) {
+            const pluginOverlay = document.getElementById(`${pluginId}-overlay`);
+            const isVisible = modalContainer.style.display === 'block';
+            if (isVisible) {
+                modalContainer.style.display = 'none';
+                if (pluginOverlay) pluginOverlay.style.display = 'none';
+                return;
+            }
+
+            if (!isListLoaded) {
+                alert('The local plugin list is not ready yet');
+            }
+
+            modalContainer.style.display = 'block';
+            if (pluginOverlay) pluginOverlay.style.display = 'block';
+
+            if (!isListLoaded) {
+                const status = document.getElementById('updater-status');
+                if (status) status.textContent = 'Scanning local plugins...';
+                const loaded = await refreshList();
+                if (!loaded && status) status.textContent = 'Plugin list could not be loaded. Please try Refresh list.';
+            }
         }
 
         function updateStatusCell(p, remoteVer, allPlugins) {
@@ -634,15 +660,14 @@
                 }
             }
 
-            // Add the update button if available or reinstallation
-            if (remoteVer) {
-                const actionsContainer = statusCell.closest('li')?.querySelector('.actions-container');
-                if (actionsContainer) {
+            const actionsContainer = statusCell.closest('li')?.querySelector('.actions-container');
+            if (actionsContainer) {
+                actionsContainer.querySelectorAll('.updater-update-btn, .updater-reinstall-btn, .updater-branch-btn, .updater-plugin-commits-btn').forEach(b => b.remove());
+                let updateButton = null;
+
+                if (remoteVer) {
                     const isUpdate = isNewer(p.version || "0.0.0", remoteVer);
                     const configuredBranch = p.branch || 'main';
-
-                    // Rimuovi pulsanti esistenti per rigenerarli correttamente
-                    actionsContainer.querySelectorAll('.updater-update-btn, .updater-reinstall-btn, .updater-branch-btn').forEach(b => b.remove());
 
                     const createBtn = (branch, label) => {
                         const btn = document.createElement('button');
@@ -656,8 +681,23 @@
                         return btn;
                     };
 
-                    actionsContainer.prepend(createBtn(configuredBranch, isUpdate ? 'Update' : 'Reinstall'));
+                    updateButton = createBtn(configuredBranch, isUpdate ? 'Update' : 'Reinstall');
+                    actionsContainer.prepend(updateButton);
                 }
+
+                const hasGitHubRepository = p.repoUrl || (p.githubOwner && p.githubRepo);
+                const descriptorPath = [p.fileUrl, p.githubPath, p.frontEndPath, p.fileName]
+                    .find(filePath => typeof filePath === 'string' && filePath && !/^https?:\/\//i.test(filePath));
+                if (settings.advancedMode && hasGitHubRepository && descriptorPath) {
+                    const commitsButton = document.createElement('button');
+                    commitsButton.className = 'updater-btn updater-btn-small updater-plugin-commits-btn';
+                    commitsButton.textContent = 'Commits';
+                    commitsButton.title = `Install a previous version of ${p.name}`;
+                    commitsButton.onclick = () => openPluginCommitsModal(p, commitsButton);
+                    if (updateButton) updateButton.insertAdjacentElement('afterend', commitsButton);
+                    else actionsContainer.prepend(commitsButton);
+                }
+                updateDevelopmentElementVisibility();
             }
         }
 
@@ -770,6 +810,93 @@
             }
         }
 
+        async function installServerCommit(commit, button) {
+            const shortCommit = commit.slice(0, 7);
+            if (!confirm(
+                `Install FM-DX Webserver commit ${shortCommit} and restart the server?\n\n` +
+                'This replaces tracked server files and discards local changes to those files.'
+            )) return;
+
+            const originalHtml = button.innerHTML;
+            button.disabled = true;
+            button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>&nbsp;Installing...';
+            try {
+                const response = await fetch('/plugins/Updater/install-server-commit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ commit, force: true })
+                });
+                const result = await response.json();
+                if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+
+                const status = document.getElementById('updater-status');
+                if (status) status.textContent = `Server commit ${shortCommit} installed; restarting now...`;
+                const restartResponse = await fetch('/restart', { method: 'POST' });
+                if (!restartResponse.ok) throw new Error(`Unable to restart the server (HTTP ${restartResponse.status})`);
+                setTimeout(() => location.reload(), 8000);
+            } catch (error) {
+                console.error('[Updater] Unable to install the selected server version:', error);
+                alert(`Unable to install server commit ${shortCommit}: ${error.message}`);
+                button.disabled = false;
+                button.innerHTML = originalHtml;
+            }
+        }
+
+        async function toggleServerCommitList(button) {
+            const serverInfo = document.getElementById('updater-server-status');
+            const existingList = serverInfo?.querySelector('#updater-server-commit-list');
+            if (existingList) {
+                existingList.remove();
+                button.setAttribute('aria-expanded', 'false');
+                return;
+            }
+
+            const originalHtml = button.innerHTML;
+            button.disabled = true;
+            button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>&nbsp;Loading...';
+            try {
+                const response = await fetch('/plugins/Updater/server-commits');
+                const result = await response.json();
+                if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+
+                const panel = document.createElement('div');
+                panel.id = 'updater-server-commit-list';
+                panel.className = 'updater-dev-only';
+                panel.style.cssText = 'display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px; padding:8px; background:#1a1a1a; border:1px solid #444; color:#ddd;';
+
+                const select = document.createElement('select');
+                select.setAttribute('aria-label', 'Select a recent FM-DX Webserver commit');
+                select.style.cssText = 'flex:1 1 260px; min-width:180px; padding:6px; background:#222; color:#fff; border:1px solid #555;';
+                result.commits.forEach(commit => {
+                    const option = document.createElement('option');
+                    const date = new Date(commit.date).toLocaleString();
+                    option.value = commit.sha;
+                    option.textContent = `v${commit.version || 'unknown'} - ${commit.sha.slice(0, 7)} - ${commit.message} (${date})`;
+                    option.title = commit.sha;
+                    select.appendChild(option);
+                });
+
+                const installButton = document.createElement('button');
+                installButton.type = 'button';
+                installButton.className = 'updater-btn updater-btn-small';
+                installButton.style.cssText = 'background:#8b1a1a; color:#fff;';
+                installButton.innerHTML = '<i class="fa-solid fa-download"></i>&nbsp;Install selected version';
+                installButton.disabled = result.commits.length === 0;
+                installButton.onclick = () => installServerCommit(select.value, installButton);
+
+                panel.append(select, installButton);
+                serverInfo.appendChild(panel);
+                button.setAttribute('aria-expanded', 'true');
+                updateDevelopmentElementVisibility();
+            } catch (error) {
+                console.error('[Updater] Unable to load server commit history:', error);
+                alert(`Unable to load previous server versions: ${error.message}`);
+            } finally {
+                button.disabled = false;
+                button.innerHTML = originalHtml;
+            }
+        }
+
         async function checkServerUpdate(localVer) {
             const status = document.getElementById('updater-status');
             if (!status) return;
@@ -788,58 +915,170 @@
                 if (remoteVer && isNewer(localVer, remoteVer)) {
                     serverInfo.style.color = '#fe0830';
                     serverInfo.style.fontWeight = 'bold';
-                    serverInfo.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Server update available: v${remoteVer} (local: v${localVer}) <a href="https://github.com/NoobishSVK/fm-dx-webserver" target="_blank" style="color:#3fa9f5; text-decoration:underline; margin-left:5px;">Repo</a><button id="updater-server-update-btn" class="updater-btn updater-btn-small" style="background:#8b1a1a; color:#fff; margin-left:8px;" title="Download the official FM-DX Webserver update and restart the server"><i class="fa-solid fa-download"></i>&nbsp;Update server</button>`;
+                    serverInfo.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Server update available: v${remoteVer} (local: v${localVer}) <a href="https://github.com/NoobishSVK/fm-dx-webserver" target="_blank" style="color:#3fa9f5; text-decoration:underline; margin-left:5px;">Repo</a><button id="updater-server-update-btn" class="updater-btn updater-btn-small updater-dev-only" style="background:#8b1a1a; color:#fff; margin-left:8px;" title="Download the official FM-DX Webserver update and restart the server"><i class="fa-solid fa-download"></i>&nbsp;Update server</button>`;
                     serverInfo.querySelector('#updater-server-update-btn').onclick = () => maintainServer(false, serverInfo.querySelector('#updater-server-update-btn'));
                 } else {
                     serverInfo.style.color = '#777';
-                    serverInfo.innerHTML = `<i class="fa-solid fa-check"></i> Server version: v${localVer} (Up to date) <a href="https://github.com/NoobishSVK/fm-dx-webserver" target="_blank" style="color:#3fa9f5; text-decoration:underline; margin-left:5px;">Repo</a><button id="updater-server-reinstall-btn" class="updater-btn updater-btn-small" style="background:#444; color:#fff; margin-left:8px;" title="Restore all tracked files of the installed FM-DX Webserver version and restart the server"><i class="fa-solid fa-arrows-rotate"></i>&nbsp;Reinstall server</button>`;
+                    serverInfo.innerHTML = `<i class="fa-solid fa-check"></i> Server version: v${localVer} (Up to date) <a href="https://github.com/NoobishSVK/fm-dx-webserver" target="_blank" style="color:#3fa9f5; text-decoration:underline; margin-left:5px;">Repo</a><button id="updater-server-reinstall-btn" class="updater-btn updater-btn-small updater-dev-only updater-server-reinstall-btn" style="background:#444; color:#fff; margin-left:8px;" title="Restore all tracked files of the installed FM-DX Webserver version and restart the server"><i class="fa-solid fa-arrows-rotate"></i>&nbsp;Reinstall server</button>`;
                     serverInfo.querySelector('#updater-server-reinstall-btn').onclick = () => maintainServer(true, serverInfo.querySelector('#updater-server-reinstall-btn'));
                 }
+                const historyButton = document.createElement('button');
+                historyButton.type = 'button';
+                historyButton.className = 'updater-btn updater-btn-small updater-dev-only updater-server-history-btn';
+                historyButton.style.cssText = 'background:#444; color:#fff; margin-left:8px;';
+                historyButton.title = 'Choose one of the ten most recent server commits';
+                historyButton.innerHTML = '<i class="fa-solid fa-clock-rotate-left"></i>&nbsp;Commits';
+                historyButton.onclick = () => toggleServerCommitList(historyButton);
+                serverInfo.appendChild(historyButton);
+                updateDevelopmentElementVisibility();
             } catch (e) {
                 console.error('[Updater] Server version check failed:', e);
             }
         }
 
         async function refreshList() {
-            try {
-                const response = await fetch('/plugins/Updater/list?t=' + Date.now());
-                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                const data = await response.json();
-                const newList = data.plugins || data;
+            if (refreshListPromise) return refreshListPromise;
 
-                // Preserve dynamic data (like cached remote version) to maintain Status sorting,
-                // but reset the retry state for plugins when the list is freshly loaded.
-                newList.forEach(np => {
-                    const old = currentPlugins.find(p => p.name === np.name);
-                    if (old) {
-                        if (old.cachedRemoteVer !== null && old.cachedRemoteVer !== undefined) {
-                            np.cachedRemoteVer = old.cachedRemoteVer;
+            refreshListPromise = (async () => {
+                try {
+                    const response = await fetch('/plugins/Updater/list?t=' + Date.now());
+                    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    const data = await response.json();
+                    const newList = data.plugins || data;
+
+                    // Preserve dynamic data (like cached remote version) to maintain Status sorting,
+                    // but reset the retry state for plugins when the list is freshly loaded.
+                    newList.forEach(np => {
+                        const old = currentPlugins.find(p => p.name === np.name);
+                        if (old) {
+                            if (old.cachedRemoteVer !== null && old.cachedRemoteVer !== undefined) {
+                                np.cachedRemoteVer = old.cachedRemoteVer;
+                            }
+                            np.versionCheckAttempts = 0;
+                            np.versionCheckStopped = false;
                         }
-                        np.versionCheckAttempts = 0;
-                        np.versionCheckStopped = false;
-                    }
-                });
+                    });
 
-                currentPlugins = newList;
-                isListLoaded = true;
-                if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
-                sortPlugins(sortState.key, false);
-                const status = document.getElementById('updater-status');
-                if (status) {
-                    status.innerHTML = `<div>Detected ${currentPlugins.length} plugins installed in the system.</div>`;
-                    if (data.serverVersion) checkServerUpdate(data.serverVersion);
+                    currentPlugins = newList;
+                    isListLoaded = true;
+                    if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
+                    sortPlugins(sortState.key, false);
+                    const status = document.getElementById('updater-status');
+                    if (status) {
+                        status.innerHTML = `<div>Detected ${currentPlugins.length} plugins installed in the system.</div>`;
+                        if (data.serverVersion) checkServerUpdate(data.serverVersion);
+                    }
+                    return true;
+                } catch (e) {
+                    console.log('[Updater] UI still initializing, please wait: ', e);
+                    return false;
                 }
-            } catch (e) {
-                console.log('[Updater] UI still initializing, please wait: ', e);
+            })();
+
+            const currentRefresh = refreshListPromise;
+            try {
+                return await currentRefresh;
+            } finally {
+                if (refreshListPromise === currentRefresh) refreshListPromise = null;
             }
         }
 
-        async function performUpdate(p, branchOverride = null) {
+        async function openPluginCommitsModal(p, button) {
+            const owner = resolveOwner(p, currentPlugins);
+            let repo = p.name.replace(/\s+/g, '-');
+            if (p.repoUrl) {
+                const match = p.repoUrl.match(/github\.com\/([^/]+)\/([^/ \n?#]+)/);
+                if (match) repo = match[2];
+            } else if (p.githubRepo) {
+                repo = p.githubRepo;
+            }
+            const repoUrl = p.repoUrl || `https://github.com/${owner}/${repo}`;
+            const descriptorPath = [p.fileUrl, p.githubPath, p.frontEndPath, p.fileName]
+                .find(filePath => typeof filePath === 'string' && filePath && !/^https?:\/\//i.test(filePath));
+            if (!descriptorPath) {
+                alert(`Unable to find the GitHub descriptor path for ${p.name}.`);
+                return;
+            }
+
+            const originalText = button.textContent;
+            button.disabled = true;
+            button.textContent = 'Loading...';
+            try {
+                const params = new URLSearchParams({
+                    repoUrl,
+                    branch: p.branch || 'main',
+                    descriptorPath
+                });
+                const response = await fetch(`/plugins/Updater/plugin-commits?${params}`);
+                const result = await response.json();
+                if (result.rateLimit) updateRateLimitDisplay(result.rateLimit);
+                if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+                if (!result.commits.length) {
+                    alert(`No versioned commits were found for ${p.name}.`);
+                    return;
+                }
+
+                const overlay = document.createElement('div');
+                overlay.style.cssText = 'position:fixed; inset:0; z-index:100001; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(0,0,0,0.75);';
+                const modal = document.createElement('div');
+                modal.setAttribute('role', 'dialog');
+                modal.setAttribute('aria-modal', 'true');
+                modal.style.cssText = 'width:min(640px, 100%); max-height:85vh; overflow:auto; padding:20px; background:#161616; border:1px solid #444; border-radius:6px; color:#eee;';
+
+                const heading = document.createElement('h3');
+                heading.textContent = `${p.name} commits`;
+                heading.style.cssText = 'margin:0 0 14px; font-size:18px;';
+                const select = document.createElement('select');
+                select.setAttribute('aria-label', `Select a ${p.name} version`);
+                select.style.cssText = 'width:100%; min-width:0; padding:8px; background:#222; color:#fff; border:1px solid #555;';
+                result.commits.forEach(commit => {
+                    const option = document.createElement('option');
+                    option.value = commit.sha;
+                    option.textContent = `v${commit.version} - ${commit.sha.slice(0, 7)} - ${commit.message} (${new Date(commit.date).toLocaleString()})`;
+                    option.title = commit.sha;
+                    select.appendChild(option);
+                });
+
+                const buttons = document.createElement('div');
+                buttons.style.cssText = 'display:flex; justify-content:flex-end; gap:8px; margin-top:14px;';
+                const closeButton = document.createElement('button');
+                closeButton.className = 'updater-btn updater-btn-small';
+                closeButton.textContent = 'Close';
+                closeButton.onclick = () => overlay.remove();
+                const installButton = document.createElement('button');
+                installButton.className = 'updater-btn updater-btn-small';
+                installButton.style.cssText = 'background:#8b1a1a; color:#fff;';
+                installButton.textContent = 'Install selected version';
+                installButton.onclick = () => {
+                    const commit = select.value;
+                    overlay.remove();
+                    performUpdate(p, null, commit);
+                };
+
+                buttons.append(closeButton, installButton);
+                modal.append(heading, select, buttons);
+                overlay.appendChild(modal);
+                overlay.addEventListener('click', event => {
+                    if (event.target === overlay) overlay.remove();
+                });
+                document.body.appendChild(overlay);
+            } catch (error) {
+                console.error(`[Updater] Unable to load commits for ${p.name}:`, error);
+                alert(`Unable to load commits for ${p.name}: ${error.message}`);
+            } finally {
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        }
+
+        async function performUpdate(p, branchOverride = null, commitOverride = null) {
             // Determine if this is a standard version upgrade or a forced reinstallation
-            const targetBranch = branchOverride || p.branch || 'main';
+            const targetBranch = commitOverride || branchOverride || p.branch || 'main';
             const isUpdate = isNewer(p.version || "0.0.0", p.cachedRemoteVer);
 
-            let msg = isUpdate ? `Update ${p.name} to version ${p.cachedRemoteVer}?` : `Reinstall ${p.name} version ${p.version}?`;
+            let msg = commitOverride
+                ? `Install ${p.name} from commit ${commitOverride.slice(0, 7)}?`
+                : (isUpdate ? `Update ${p.name} to version ${p.cachedRemoteVer}?` : `Reinstall ${p.name} version ${p.version}?`);
             if (branchOverride && branchOverride !== p.branch) {
                 msg = `Switch ${p.name} to branch "${branchOverride}" and download files?`;
             }
@@ -903,7 +1142,10 @@
                     const excludedList = data.skippedBySkipFiles?.length > 0 ? `\n\nExcluded by skipFiles:\n- ${data.skippedBySkipFiles.join('\n- ')}` : '';
                     const skipList = data.notDownloadedFiles?.length > 0 ? `\n\nSkipped files (not downloaded):\n- ${data.notDownloadedFiles.join('\n- ')}` : '';
                     const postUpdateMsg = "\n\nAfter the plugin update, you must:\n1) Clear the browser cache;\n2) Restart the server, if necessary.";
-                    alert(`${p.name} updated successfully!${postUpdateMsg}${fileList}${excludedList}${skipList}`);
+                    const successMessage = commitOverride
+                        ? `${p.name} installed from commit ${commitOverride.slice(0, 7)} successfully!`
+                        : `${p.name} updated successfully!`;
+                    alert(`${successMessage}${postUpdateMsg}${fileList}${excludedList}${skipList}`);
                     await refreshList();
                 } else {
                     // Notify user of server-side failure and restore previous status
