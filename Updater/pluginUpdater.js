@@ -8,7 +8,7 @@
 "use strict";
 
 (async () => {
-    const pluginVersion = '0.3.6dev';
+    const pluginVersion = '0.3.7dev';
     const pluginId = 'updater-plugin-ui-container';
     const defaultRepoOwner = 'mm-prg';
     let sortState = JSON.parse(localStorage.getItem('updater-sort-state') || '{"key": "status", "asc": false}');
@@ -468,10 +468,12 @@
                     <div id="updater-status" class="updater-subtitle" style="color: #3fa9f5; font-weight: bold;">Scanning...</div>
                     <div id="updater-server-status" aria-live="polite"></div>
                 </div>
-                <div style="display: flex; gap: 10px;">
-                    <button id="refresh-list-btn" class="updater-btn" style="width: fit-content; background: #333; color: #fff; border: 1px solid #444;" title="Re-scan the plugins directory to update the list"><i class="fa-solid fa-sync"></i>&nbsp;Refresh list</button>
-                    <button id="add-plugin-btn" class="updater-btn updater-btn-primary" style="width: fit-content;" title="Install a new plugin by providing its GitHub repository URL">Add new plugin</button>
-                    <button id="restart-server-btn" class="updater-btn" style="width: fit-content; background: #8b1a1a; color: #fff; border: 1px solid #b22222;" title="Restart the FM-DX Webserver"><i class="fa-solid fa-arrow-rotate-right"></i>&nbsp;Restart server</button>
+                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+                    <div style="display: flex; gap: 10px;">
+                        <button id="refresh-list-btn" class="updater-btn" style="width: fit-content; background: #333; color: #fff; border: 1px solid #444;" title="Re-scan the plugins directory to update the list"><i class="fa-solid fa-sync"></i>&nbsp;Refresh list</button>
+                        <button id="restart-server-btn" class="updater-btn" style="width: fit-content; background: #8b1a1a; color: #fff; border: 1px solid #b22222;" title="Restart the FM-DX Webserver"><i class="fa-solid fa-arrow-rotate-right"></i>&nbsp;Restart server</button>
+                    </div>
+                    <button id="add-plugin-btn" class="updater-btn updater-btn-primary" style="width: fit-content;" title="Browse the list of available plugins">View and install more plugins</button>
                 </div>
             </div>
             
