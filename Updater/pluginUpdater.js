@@ -303,6 +303,12 @@
         let currentPlugins = [];
         let isListLoaded = false;
         let refreshListPromise = null;
+        const highlightRestartButton = () => {
+            const button = document.getElementById('restart-server-btn');
+            if (!button) return;
+            button.classList.add('updater-restart-required');
+            button.title = 'A server restart is required to apply pending changes';
+        };
         const isOnSetupPage = window.location.pathname.includes('/setup');
         const setupPluginSelect = isOnSetupPage ? document.getElementById('plugins') : null;
 
@@ -401,6 +407,8 @@
             .updater-btn { display: inline-flex !important; align-items: center !important; justify-content: center !important; padding: 4px 8px !important; border: none !important; border-radius: 4px !important; cursor: pointer !important; font-size: 11px !important; font-weight: bold !important; transition: opacity 0.2s !important; text-decoration: none !important; white-space: nowrap !important; width: auto !important; height: auto !important; min-width: 0 !important; max-width: none !important; flex: 0 0 auto !important; box-sizing: border-box !important; line-height: 1.2 !important; margin: 0 !important; }
             .updater-btn:hover { opacity: 0.85 !important; }
             .updater-btn-primary { background: #3fa9f5 !important; color: #000 !important; }
+            .updater-btn.updater-restart-required { background: #ffcc00 !important; color: #111 !important; border: 2px solid #fff176 !important; box-shadow: 0 0 12px rgba(255, 204, 0, 0.8) !important; }
+            #add-plugin-btn { padding: 10px 16px !important; font-size: 14px !important; }
             .updater-btn-danger { background: #fe0830 !important; color: #fff !important; }
             .updater-btn-small { display: inline-flex !important; align-items: center !important; justify-content: center !important; padding: 3px 6px !important; font-size: 10px !important; height: 22px !important; line-height: 1 !important; white-space: nowrap !important; width: auto !important; flex: 0 0 auto !important; margin: 0 !important; box-sizing: border-box !important; }
             .updater-server-reinstall-btn, .updater-server-history-btn { margin-left: 8px !important; }
@@ -463,6 +471,9 @@
                     <span id="updater-version-tag" style="color: #777; font-size: 14px;">v${pluginVersion} (<strong style="color: #fff; font-size: 14px; font-weight: bold;" title="Number of remaining GitHub API calls (resets after one hour)">api left ?</strong>)</span>
                 </div>
             </div>
+            <div style="display: flex; justify-content: flex-start; margin-bottom: 10px;">
+                <button id="add-plugin-btn" class="updater-btn updater-btn-primary" style="width: fit-content;" title="Browse the list of available plugins">View and install more plugins</button>
+            </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                 <div>
                     <div id="updater-status" class="updater-subtitle" style="color: #3fa9f5; font-weight: bold;">Scanning...</div>
@@ -473,17 +484,17 @@
                         <button id="refresh-list-btn" class="updater-btn" style="width: fit-content; background: #333; color: #fff; border: 1px solid #444;" title="Re-scan the plugins directory to update the list"><i class="fa-solid fa-sync"></i>&nbsp;Refresh list</button>
                         <button id="restart-server-btn" class="updater-btn" style="width: fit-content; background: #8b1a1a; color: #fff; border: 1px solid #b22222;" title="Restart the FM-DX Webserver"><i class="fa-solid fa-arrow-rotate-right"></i>&nbsp;Restart server</button>
                     </div>
-                    <button id="add-plugin-btn" class="updater-btn updater-btn-primary" style="width: fit-content;" title="Browse the list of available plugins">View and install more plugins</button>
                 </div>
             </div>
             
             <div id="updater-sort-controls" class="updater-list-item" style="background: transparent; border-left-color: transparent; border-bottom: 1px solid #333; border-radius: 0; margin-bottom: 10px; padding-top: 0; padding-bottom: 5px; opacity: 0.8; font-weight: bold; text-transform: uppercase; cursor: default; text-align: left;">
                 <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden; min-width: 0;">
-                    <div class="updater-sort-link" data-sort="name" style="flex: 0 0 24%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Name ↕</div>
-                    <div class="updater-sort-link" data-sort="author" style="flex: 0 0 15%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Author ↕</div>
-                    <div style="flex: 0 0 6%; color: #3fa9f5; font-size: 11px; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; box-sizing: border-box;">Local</div>
+                    <div class="updater-sort-link" data-sort="name" style="flex: 0 0 30%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Name</div>
+                    <div class="updater-sort-link" data-sort="enabled" style="flex: 0 0 10%; text-align: center !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">ON/OFF</div>
+                    <div class="updater-sort-link" data-sort="author" style="flex: 0 0 15%; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Author</div>
+                    <div style="flex: 0 0 8%; color: #3fa9f5; font-size: 11px; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; box-sizing: border-box;">Local</div>
                     <div style="flex: 0 0 8%; color: #3fa9f5; font-size: 11px; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; box-sizing: border-box;">GitHub</div>
-                    <div class="updater-sort-link" data-sort="status" style="flex: 1; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Status ↕</div>
+                    <div class="updater-sort-link" data-sort="status" style="flex: 1; text-align: left !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">Status</div>
                 </div>
                 <div style="min-width: 320px; flex-shrink: 0; margin-left: 10px; display: flex; justify-content: flex-end;"></div>
             </div>
@@ -698,7 +709,7 @@
                 const viewLink = `<a href="${fullRepoUrl}" target="_blank" style="margin-left:5px; color:#3fa9f5; text-decoration:underline; font-size:10px;">Repo</a>`;
 
                 if (isNewer(p.version || "0.0.0", remoteVer)) {
-                    statusCell.innerHTML = `<span style="color: #fe0830; font-weight: bold;">🚀 Update: ${remoteVer}</span> ${viewLink}`;
+                    statusCell.innerHTML = `<span style="color: #fe0830; font-weight: bold;">Update: ${remoteVer}</span> ${viewLink}`;
                 } else {
                     statusCell.innerHTML = `<span style="color: #00ff00;">✓ Up to date</span> ${viewLink}`;
                 }
@@ -1006,6 +1017,7 @@
 
                     currentPlugins = newList;
                     isListLoaded = true;
+                    if (currentPlugins.some(plugin => plugin.hasStaleFiles)) highlightRestartButton();
                     if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
                     sortPlugins(sortState.key, false);
                     syncUpdaterPluginStatesFromSetup();
@@ -1435,7 +1447,7 @@
             modal.innerHTML = `
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:12px;">
                         <div>
-                            <h3 class="updater-title" style="margin:0; font-size:1.5em;">Add New Plugin</h3>
+                            <h3 class="updater-title" style="margin:0; font-size:1.5em;">View and install more plugins</h3>
                         </div>
                     </div>
                     <div id="repo-selection-list" style="display:grid; gap:14px; max-height:540px; overflow:auto; padding-right:6px; border:1px solid #00ff00; border-radius:12px; padding:14px;">
@@ -1637,7 +1649,7 @@
                                 item.style.cssText = 'display:flex; justify-content:flex-start; align-items:flex-start; gap:18px; padding:18px 20px; border:1px solid #2f4a2f; border-radius:10px; background:#1f1f1f;';
                                 item.innerHTML = `
                                     <div style="flex:0 0 180px; max-width:180px; display:flex; align-items:center; justify-content:center;">
-                                        <div class="repo-preview-image" style="width:180px; height:140px; border-radius:10px; overflow:hidden; background:#121212; display:flex; align-items:center; justify-content:center;"></div>
+                                        <div class="repo-preview-image" style="width:180px; height:140px; border-radius:10px; overflow:hidden; background:#121212; display:flex; align-items:center; justify-content:center;"><img src="https://tef.noobish.eu/logos/default-logo.png" alt="FM-DX Webserver" style="width:50%; height:50%; object-fit:contain; display:block;"></div>
                                     </div>
                                     <div style="min-width:0; flex:1; display:flex; flex-direction:column; gap:10px;">
                                         <div>
@@ -1694,7 +1706,7 @@
             let calculatedBranch = 'main';
 
             modal.innerHTML = `
-                    <h3 style="margin:0 0 6px 0; font-size:1.4em; color:#fff;">Add New Plugin</h3>
+                    <h3 style="margin:0 0 6px 0; font-size:1.4em; color:#fff;">Add an unlisted plugin</h3>
                     <p style="font-size:13px; color:#aaa; margin-top:0; margin-bottom:18px;">Enter the repository details for the plugin you want to install or just click on the lens icon to try to auto-detect the data.</p>
                     <div style="margin-bottom:15px;">
                         <label style="display:block; font-size:12px; font-weight:bold; color:#ccc; margin-bottom:6px;">GitHub Repository URL</label>
@@ -2979,6 +2991,7 @@
                     throw new Error(result.error || 'Unable to save plugin state');
                 }
                 p.isEnabled = !nextEnabled;
+                if (result.restartRequired) highlightRestartButton();
                 syncSetupPluginSelection(p);
                 renderPluginRows();
             } catch (e) {
@@ -2999,16 +3012,18 @@
                 li.className = 'updater-list-item';
 
                 li.innerHTML = `
-                    <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden; min-width: 0;">
-                        <div class="updater-title" style="flex: 0 0 24%; color: #3fa9f5; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; min-width: 0; text-align: left !important; display: flex; align-items: center; gap: 6px;" title="${p.fullPath || ''}">
-                            <button type="button" class="updater-toggle-btn" aria-pressed="${p.isEnabled !== false}" aria-label="${(p.isEnabled !== false) ? `Disable ${p.name || 'plugin'} (server restart required)` : `Enable ${p.name || 'plugin'} (server restart required)`}" style="flex: 0 0 10px; width: 10px; min-width: 10px; height: 10px; padding: 0; border: 1px solid rgba(255,255,255,.7); border-radius: 50%; background:${(p.isEnabled !== false) ? '#1f8f1f' : '#d33'}; cursor: pointer;" title="${(p.isEnabled !== false) ? 'Disable this plugin (server restart required)' : 'Enable this plugin (server restart required)'}"></button>
+                        <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px; overflow: hidden; min-width: 0;">
+                            <div class="updater-title" style="flex: 0 0 30%; color: #3fa9f5; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; min-width: 0; text-align: left !important; display: flex; align-items: center; gap: 6px;" title="${p.fullPath || ''}">
                             <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;">${p.name || 'Unknown'}</span>
                             ${p.hasStaleFiles ? '<i class="fa-solid fa-triangle-exclamation" style="color: #ffaa00; font-size: 12px;" title="Node.js Cache Out of Sync: some backend files have been modified on disk but are not yet reloaded in memory. A server restart is required."></i>' : ''}
+                            </div>
+                        <div style="flex: 0 0 10%; display: flex; justify-content: center; align-items: center; min-width: 0;">
+                            <button type="button" class="updater-toggle-btn" aria-pressed="${p.isEnabled !== false}" aria-label="${(p.isEnabled !== false) ? `Disable ${p.name || 'plugin'} (server restart required)` : `Enable ${p.name || 'plugin'} (server restart required)`}" style="flex: 0 0 10px; width: 10px; min-width: 10px; height: 10px; padding: 0; border: 1px solid rgba(255,255,255,.7); border-radius: 50%; background:${(p.isEnabled !== false) ? '#1f8f1f' : '#d33'}; cursor: pointer;" title="${(p.isEnabled !== false) ? 'Click to disable this plugin (server restart required)' : 'Click to enable this plugin (server restart required)'}"></button>
                         </div>
                         <div class="updater-subtitle" style="flex: 0 0 15%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
                             ${p.author || 'Unknown'}
                         </div>
-                        <div class="updater-subtitle" style="flex: 0 0 6%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
+                        <div class="updater-subtitle" style="flex: 0 0 8%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
                             v<span style="color: #fff;">${p.version}</span>
                         </div>
                         <div id="remote-ver-${p.name.replace(/\s+/g, '_')}" class="updater-subtitle" style="flex: 0 0 8%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left !important;">
@@ -3088,6 +3103,14 @@
             localStorage.setItem('updater-sort-state', JSON.stringify(sortState));
 
             currentPlugins.sort((a, b) => {
+                if (key === 'enabled') {
+                    const enabledA = a.isEnabled !== false;
+                    const enabledB = b.isEnabled !== false;
+                    if (enabledA !== enabledB) {
+                        return sortState.asc ? Number(enabledA) - Number(enabledB) : Number(enabledB) - Number(enabledA);
+                    }
+                    return (a.name || '').localeCompare(b.name || '');
+                }
                 if (key === 'status') {
                     // Rank: 4: Update, 3: OK, 2: Error, 1: In progress
                     const getRank = (p) => {
@@ -3120,6 +3143,7 @@
             const data = await response.json();
             currentPlugins = data.plugins || data;
             isListLoaded = true;
+            if (currentPlugins.some(plugin => plugin.hasStaleFiles)) highlightRestartButton();
             if (data.rateLimit) updateRateLimitDisplay(data.rateLimit);
 
             const status = document.getElementById('updater-status');
