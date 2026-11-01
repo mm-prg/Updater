@@ -1,9 +1,9 @@
 # Updater Plugin Manager for FM-DX Webserver
 
-The **Updater** plugin is a plugin management tool designed for the [FM-DX Webserver](https://github.com/NoobishSVK/fm-dx-webserver). 
-It provides a web interface to easily track new versions of the installed plugins and update them, automatically downloading files from the GitHub repository and saving them in the web server. 
-You can automatically install a new plugin, selecting from a list of known plugins or add a new plugin, just providing the URL of its GitHub repository. 
-You may also explore the plugin files stored on the server and directly check and modify them with the plugin editor (e.g. config files, etc). 
+The **Updater Plugin Manager** is now a complete plugin management tool designed for the [FM-DX Webserver](https://github.com/NoobishSVK/fm-dx-webserver). 
+It provides a web interface to: 1) monitor and easily update the plugins you installed, automatically checking and downloading new versions; 2) view a list of all known plugins and install them (or add a new one, just providing the URL of its GitHub repository). 
+From the same interface you may also enable / disable a plugin and also restart the server. You may also explore the plugin files stored on the server and directly check and modify them with the plugin editor (e.g. config files, etc).
+You don't need to use the terminal anymore, as you can do everything you need from the plugin interface. 
 - The Discord plugin page is: https://discord.com/channels/1053804249651359765/1506667363859173468/1506667363859173468
 
 <img width="2392" height="1237" alt="image" src="https://github.com/user-attachments/assets/f5bc1bf5-0ac5-4210-a879-fb8896a080e3" />
