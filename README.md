@@ -192,20 +192,24 @@ The limit should be sufficient for all normal uses. If it is exceeded (error 403
 
 ## Version history
 
-### Version 3.0
+### Version 0.4.0
+- Added a button to restart the server
+- Added a button to enable / disable a plugin
+
+### Version 0.3.0
 
 - A new way of adding a new plugin. Simply select it from the list of all known plugins, to easily find new ones (there are really a lot of fantastic plugins to discover!).
 - Added an extra bar of plugins, useful if you installed a lot of them!
 
-### Version 2.2
+### Version 0.2.2
 - Added the ability to exclude files while updating/reinstalling. This is useful to prevent deleting already modified local files (e.g. for the Scanner plugin, to prevent deleting files like whitelist.txt or blacklist.txt). Thanks to TVCL for his suggestion
 
-### Version 2.1
+### Version 0.2.1
 
 - Automatic recognition of locally installed plugins has been improved. The plugin should automatically recognize most of the available plugins and therefore make the first installation easier.
 Thanks to @Ian Kelly | Reading, G 🇬🇧 for his report!
 If you find a plugin that isn't automatically recognized, please let me know and I'll add it to the database.
 
-### Version 2.0
+### Version 0.2.0
 - Added a server terminal, working on both Linux amd Windows, which allows you to send commands directly to the server
 
