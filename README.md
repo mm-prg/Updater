@@ -53,8 +53,6 @@ If you have not yet installed the Updater plugin, follow these steps to install 
 The plugin interface is **accessible only to administrators** and nothing will appear until you're logged in as an administrator. 
 You may access it in three ways:
 
-<img width="3159" height="1531" alt="image" src="https://github.com/user-attachments/assets/bdc62cd1-7a9b-420c-8b0d-46fd93709d8e" />
-
 **Settings - Plugins Page**. Navigate to the setup section of your webserver. In the Plugins page, at the bottom of the FM-DX-Webserver Plugin page, you will find the **Installed Plugins List**
 
 <img width="269" height="69" alt="header button" src="https://github.com/user-attachments/assets/2936edd5-c194-4639-a9b6-9e46eed78eae" />
@@ -67,18 +65,20 @@ In the options menu, you may enable or disable the icons and the list in the set
 
 ## Main page
 
-The plugin checks the server and shows the **list of the installed plugins** and their version. 
-To check if a new version of each plugin is available, you need to provide **the URL of the github repository** of each plugin (Edit). 
-When started for the first time, it will try to automatically retrieve the URL of the repository, looking in the file repo_data.json. Click 'Edit' to add the URL of other plugins. 
+The plugin checks the server and shows the list of the **installed plugins** and their version. 
+When started, it will try to automatically retrieve the URL of the plugin github repository, looking in the file repo_data.json. Click 'Edit' to add the URL of the repository, if it's not automatically detected. 
 
+- **Enabled / Disabled (on/off)**: Shows whether the plugin is enabled (**green**) or disabled (**red**). Click the button to change it. A server restart may be required before the change is applied.
 - **Update**: Highlighted in red when a newer version is available. Just click it to automatically download the new version and to save the new files in the plugins directory of the server.
-- **Reinstall**: Allows you to download again all files for the current version. 
+- **Reinstall**: Allows you to download again all files for the current version.
+- **Commits**: View and download **previous versions** of the plugin, committed to Github. 
 - **Edit**: Add or modify the GitHub repository URL. Clicking the verify button checks the URL and automatically detects the plugin descriptor file and the plugin directory. 
-- **Enabled / Disabled**: Shows whether the plugin's frontend path is enabled in the FM-DX Webserver configuration. Click the button to add or remove that path from `config.json`. A server restart may be required before the change is applied.
 - **Delete**: Removes the plugin's descriptor file and its associated data directory from the server.
-- **Explore**: Open the file manager to browse the plugin's local directory, view source code, edit files, or delete them.
+- **Explore**: Open the file manager to browse the plugin's local directory, view source code, edit configuration files or other plugin files.
 
-**AFTER UPDATING, DON'T FORGET TO CLEAR THE BROWSER CACHE AND RESTART THE SERVER!**
+**AFTER UPDATING, DON'T FORGET TO CLEAR THE BROWSER CACHE (ctrl-F5) AND RESTART THE SERVER (click on the restart button)!**
+
+You may update and enable one or even more plugin before restarting the server. 
 
 ## Adding a new plugin
 
