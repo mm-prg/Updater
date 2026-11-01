@@ -32,7 +32,7 @@ You don't need to use the terminal anymore, as you can do everything you need fr
 
 ## First installation
 
-Follow these steps to install the plugin:
+If you have not yet installed the Updater plugin, follow these steps to install the plugin:
 
 1. Copy the `Updater.js` descriptor file into the `/plugins` directory of your FM-DX-Webserver.
 2. Copy the entire `Updater/` folder into the `/plugins` directory.
@@ -44,9 +44,8 @@ Follow these steps to install the plugin:
 
 - After installation, simply click on one of the Updater icons to bring up the list of the installed plugins
 - During the first installation, the plugin will try to automatically check which plugins are already installed and automatically check and derive the plugin's relative data (repository, installation directory, descriptor file).
-- Please be patient. This operation, which is only performed during **the first installation**, **may take some time**.
-- After the first installation, Updater will just have to search for plugin updates on Github and will do it faster, immediately showing which plugins need to be updated
-- If you open the list while reading the plugins directory is still in progress, the list will not be visible yet. In this case, simply wait a bit and then refresh the browser page.
+- Please be patient. This operation, which is only performed when started, **may take some time**. 
+- If you open the list while reading is still in progress, the list will not be visible. In this case, simply wait a bit and then refresh the browser page.
 - If you find a plugin that isn't automatically recognized, **please let me know and I'll add it to the database**.
 
 ## Usage
