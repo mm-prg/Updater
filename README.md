@@ -125,6 +125,20 @@ You may filter the list, to show only the the plugins not already installed o to
 
 **AFTER INSTALLING A NEW PLUGIN, YOU HAVE TO ENABLE IT (click the on/off button) AND RESTART THE SERVER (click on the restart menu)**
 
+## Extra Plugins Bar
+
+<img width="2539" height="491" alt="image" src="https://github.com/user-attachments/assets/5329f39f-6be4-4af0-9bd8-3889d3ea47ef" />
+
+- Displays an extra plugin bar, just below the server description. It opens when you click on the server name. 
+- Useful when you have a lot of plugins!
+
+## Options Menu
+
+Click the **Gear Icon** next to the version number to access advanced settings:
+- **Visibility**: Toggle the presence of the Updater in the Plugin Panel, Header Bar, or the Setup Table.
+- **Advanced Mode** Hide/Show the Advanced Tools Menu and the Explore button
+- **Sudo Password** If you want, you may store the server password here
+
 ## Advanced Tools Menu
 You may hide this menu (and the Explore button). Select "Advanced Mode" on/off from the Options menu
 
@@ -132,19 +146,6 @@ You may hide this menu (and the Explore button). Select "Advanced Mode" on/off f
 - **View Server Log** Here you may view the **server log** and read the server message, to see what's happening in your server. As you know, you may also view the **browser log**, from your browser DevTools (usually, press F12)
 - **View Node.js cache** Fm-Dx-Webserver runs on Node.js, with its pros and cons. Node.js caches a lot of files, to speed things up. If you edit a file on the server, Node.js often continues to use the old version of the file it cached. That's why, when you update a plugin, you usually need to restart the server. Here you can see which files are in the cache of Node.js 
 - **Plugins data**: Quick access to raw configuration files `plugins_data.json` (stores the data of each installed plugin) and `pl_data.json` (stores the url of some repository).
-
-## Execute Terminal Commands
-
-<img width="3100" height="1678" alt="image" src="https://github.com/user-attachments/assets/b81dbc1d-05b7-4791-a58a-f3a72285b829" />
-
-- This is a small terminal (bash/cmd), working on both Linux amd Windows, which allows you to send commands directly to the server (using child_process)
-- The available commands obviously depend on the operating system of your server (Windows/Linux).
-- On linux you can also use **"sudo" commands**
-- So, you may shutdown or reboot the server or send any command you want (e.g. "sudo shutdown now", "shutdown -r -t 0", "sudo reboot" etc).
-- It is also possible to store the two most used commands and, if you want, also store the sudo password. 
-- It's a very powerful feature, use it with caution!
-- Don't forget that commands are executed from within the server, while it's running
-- If you find it useful, please let me know on Discord
 
 ## Explore page
 You may hide this button (and the Advanced Tools menu). Select "Advanced Mode" on/off from the Options menu
@@ -167,16 +168,18 @@ When you download a plugin via the Updater, a sidebar will appear with a list of
 - If the plugin has no configuration file, but has **parameters** stored in the plugin.js file itself
 - Look in the green box, click on the plugin file and edit it!
 
+## Execute Terminal Commands
 
-## Options Menu
+<img width="3100" height="1678" alt="image" src="https://github.com/user-attachments/assets/b81dbc1d-05b7-4791-a58a-f3a72285b829" />
 
-Click the **Gear Icon** next to the version number to access advanced settings:
-- **Visibility**: Toggle the presence of the Updater in the Plugin Panel, Header Bar, or the Setup Table.
-- **Advanced Mode** Hide/Show the Advanced Tools Menu and the Explore button
-- **Sudo Password** If you want, you may store the server password here
-
-## Extra Plugins Bar
-- Displays an extra plugin bar, just below the server description. Useful when you have a lot of plugins!
+- This is a small terminal (bash/cmd), working on both Linux amd Windows, which allows you to send commands directly to the server (using child_process)
+- The available commands obviously depend on the operating system of your server (Windows/Linux).
+- On linux you can also use **"sudo" commands**
+- So, you may shutdown or reboot the server or send any command you want (e.g. "sudo shutdown now", "shutdown -r -t 0", "sudo reboot" etc).
+- It is also possible to store the two most used commands and, if you want, also store the sudo password. 
+- It's a very powerful feature, use it with caution!
+- Don't forget that commands are executed from within the server, while it's running
+- If you find it useful, please let me know on Discord
 
 ## Notes
 - Comments and suggestions are welcome! Thanks to anyone who tries the plugin and reports any bugs.
