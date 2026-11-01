@@ -1,13 +1,14 @@
 # Updater Plugin Manager for FM-DX Webserver
 
-The **Updater Plugin Manager** is now a complete plugin management tool designed for the [FM-DX Webserver](https://github.com/NoobishSVK/fm-dx-webserver). 
-It provides a web interface to: 1) monitor and easily update the plugins you installed, automatically checking and downloading new versions (or previous ones); 2) view a list of all known plugins and install them (or add a new one, just providing the URL of its GitHub repository); 3) Add an extra plugins bar, just below the server description. Useful if you have a lot of plugins! 
+The **Updater Plugin Manager** is a complete plugin management tool designed for the [FM-DX Webserver](https://github.com/NoobishSVK/fm-dx-webserver). 
+It provides a web interface to: 
+   1) monitor and easily update the plugins you installed, automatically checking and downloading new versions;
+   2) view a list of all known plugins and install them (or add a new one, just providing the URL of its GitHub repository);
+   3) Add an extra plugins bar, just below the server description. Useful if you have a lot of plugins! 
 
-From the same interface you may also enable / disable a plugin and also restart the server. 
+From the same interface you may also enable / disable a plugin, restart the server, explore the plugin files stored on the server and directly check and modify config files (even the fm-dx-webserver config file).
 
-You may also explore the plugin files stored on the server and directly check and modify them with the plugin editor (e.g. config files, etc).
-
-You don't need to use the terminal anymore, as you can do everything you need from the plugin interface. 
+If you want, you don't need to use the terminal anymore, as you can do everything you need from the plugin interface. 
 
 - The Discord plugin page is: https://discord.com/channels/1053804249651359765/1506667363859173468/1506667363859173468
 
@@ -29,7 +30,7 @@ You don't need to use the terminal anymore, as you can do everything you need fr
 - **View server log or Node.js cache**. View the log (server side) to check that everything's going well. The log (client side) is as always available from your browser dev tools (Click F12).
 - **Execute terminal commands**. If you know what you're doing, you may even execute some terminal commands
 - **Restart server**: just click on the "Restart Server" button. Please notice that this function uses the same function of fm-dx-webserver, like the button now available in the Settings Page and that **you need to update fm-dx-webserver to the latest version** (1.4.1 and up). 
-- **Enable/Disable plugin**
+- **Enable/Disable plugin**: click the on/off button to enable or disable the plugin. 
 - **Extra Plugins Bar**: Displays an extra plugin bar, just below the server description. Useful when you have a lot of plugins!
 
 ## First installation
@@ -60,7 +61,7 @@ You may access it in three ways:
 
 <img width="269" height="69" alt="header button" src="https://github.com/user-attachments/assets/2936edd5-c194-4639-a9b6-9e46eed78eae" />
 
-**Header Icon**. If you are logged in as an administrator, an icon will appear in the server main page, on the left side of the first line. Clicking it opens the plugin interface as a modal window over the main page.
+**Header Icon**. If you are logged in as an administrator, an icon will appear in the server main page, on the right side of the first line. 
 
 **Plugin Line Icon**: If you are logged in as an administrator, an icon appears in the plugin line, between the icons of the installed plugins
 
@@ -72,33 +73,57 @@ In the options menu, you may enable or disable the icons and the list in the set
 
 The plugin checks the server and shows the list of the **installed plugins** and their version. 
 When started, it will try to automatically retrieve the URL of the plugin github repository, looking in the file repo_data.json. Click 'Edit' to add the URL of the repository, if it's not automatically detected. 
+Just click on the column header to sort the plugin list. 
 
 - **Enabled / Disabled (on/off)**: Shows whether the plugin is enabled (**green**) or disabled (**red**). Click the button to change it. A server restart may be required before the change is applied.
 - **Update**: Highlighted in red when a newer version is available. Just click it to automatically download the new version and to save the new files in the plugins directory of the server.
 - **Reinstall**: Allows you to download again all files for the current version.
 - **Commits**: View and download **previous versions** of the plugin, committed to Github. 
-- **Edit**: Add or modify the GitHub repository URL. Clicking the verify button checks the URL and automatically detects the plugin descriptor file and the plugin directory. 
+- **Edit**: Add or modify the GitHub repository URL. Clicking the verify button (🔍) checks the URL and automatically detects the plugin descriptor file and the plugin directory. 
 - **Delete**: Removes the plugin's descriptor file and its associated data directory from the server.
 - **Explore**: Open the file manager to browse the plugin's local directory, view source code, edit configuration files or other plugin files.
 
+## Update a plugin
+
+Plugin that need to be updated are shown on the first lines of the list, with a red "Update" button available. 
+Click on the button to update the plugin. 
+You may update one or more plugins before restarting the server. 
+
 **AFTER UPDATING, DON'T FORGET TO CLEAR THE BROWSER CACHE (ctrl-F5) AND RESTART THE SERVER (click on the restart button)!**
 
-You may update and enable one or even more plugin before restarting the server. 
+## Reinstall a plugin
 
-## Adding a new plugin
+If you want to reinstall an already up do date plugin, click on the "Reinstall" button
+
+## Load previous versions
+
+If you want to download a previous version of a plugin (e.g. if it the new version doesn't work on your system), click on the "Commits" button. 
+Updater looks in the Github Commits page of the plugin and shows a list of the more recent versions committed. 
+Select the version you want and install it.
+
+## Enable / Disable a plugin
+
+When you load a new plugin, it is disabled by default. Click on the on/off button to enable it. 
+You may also disable or enable an already installed plugin. 
+
+**Restart the server** after enabling / disabling the plugin. 
+
+## View and install more plugins
 
 <img width="2590" height="1816" alt="image" src="https://github.com/user-attachments/assets/ff9bcc57-c322-47ea-ba1a-284b56ad6536" />
 
-- Click the **Add new plugin** button in the top-right corner of the main page, to open the **list of all known plugins**.
+- Click the **View and install more plugins** button in the top-right corner of the main page, to open the **list of all known plugins**.
+You may filter the list, to show only the the plugins not already installed o to show all the plugins 
+ 
 - Browse through the list and select the plugin you want to install
-- If you want to install a plugin not included in the list, paste the **GitHub repository URL** (e.g., `https://github.com/mm-prg/FavStations`).
+- If you want to install a plugin not included in the list, you need to paste the **GitHub repository URL** (e.g., `https://github.com/mm-prg/FavStations`).
 - Click the 🔍 (**Verify**) button. The system will automatically:
    - Scan the repository for a valid descriptor file (containing `pluginConfig`).
    - Check both the root and the `/plugins` directory on GitHub.
    - Detect the recommended **Local Directory** based on the plugin's frontend path.
 - Click **Save & Install**. The updater will download the descriptor and recursively pull all required assets into the correct folders.
 
-**AS USUAL, AFTER INSTALLING A NEW PLUGIN, YOU HAVE TO RESTART THE SERVER AND ENABLE IT IN THE SETUP MENU, THEN CLEAR THE BROWSER CACHE AND RESTART THE SERVER ONE MORE TIME!**
+**AFTER INSTALLING A NEW PLUGIN, YOU HAVE TO ENABLE IT (click the on/off button) AND RESTART THE SERVER (click on the restart menu)**
 
 ## Advanced Tools Menu
 You may hide this menu (and the Explore button). Select "Advanced Mode" on/off from the Options menu
