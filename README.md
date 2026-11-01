@@ -27,7 +27,9 @@ You don't need to use the terminal anymore, as you can do everything you need fr
 - **View and modify Fm-Dx-Webserver configuration**. View and edit the Fm-Dx-Webserver configuration file.
 - **View and modify Fm-Dx-Webserver configuration**. View and edit the Fm-Dx-Webserver configuration file.
 - **View server log or Node.js cache**. View the log (server side) to check that everything's going well. The log (client side) is as always available from your browser dev tools (Click F12).
-- **Execute terminal commands**. If you know what you're doing, you may even execute some terminal commands.
+- **Execute terminal commands**. If you know what you're doing, you may even execute some terminal commands
+- **Restart server**: just click on the "Restart Server" button. Please notice that this function uses the same function of fm-dx-webserver, like the button now available in the Settings Page and that **you need to update fm-dx-webserver to the latest version** (1.4.1 and up). 
+- **Enable/Disable plugin**
 - **Extra Plugins Bar**: Displays an extra plugin bar, just below the server description. Useful when you have a lot of plugins!
 
 ## First installation
@@ -53,15 +55,16 @@ If you have not yet installed the Updater plugin, follow these steps:
 ## Usage
 
 The plugin interface is **accessible only to administrators** and nothing will appear until you're logged in as an administrator. 
-You may access it in three ways:
 
-**Settings - Plugins Page**. Navigate to the setup section of your webserver. In the Plugins page, at the bottom of the FM-DX-Webserver Plugin page, you will find the **Installed Plugins List**
+You may access it in three ways:
 
 <img width="269" height="69" alt="header button" src="https://github.com/user-attachments/assets/2936edd5-c194-4639-a9b6-9e46eed78eae" />
 
-**Header Icon**. If you are logged in as an administrator, an icon will appear in the plugin panel. Clicking it opens the plugin interface as a modal window over the main page.
+**Header Icon**. If you are logged in as an administrator, an icon will appear in the server main page, on the left side of the first line. Clicking it opens the plugin interface as a modal window over the main page.
 
-**Plugin Line Icon**: If you are logged in as an administrator, an icon appears in the header, between the icons of the installed plugins
+**Plugin Line Icon**: If you are logged in as an administrator, an icon appears in the plugin line, between the icons of the installed plugins
+
+**Settings - Plugins Page**. Navigate to the settings page of the webserver anche click on "Plugins". At the bottom of the page, you will find the **Installed Plugins** list.
 
 In the options menu, you may enable or disable the icons and the list in the setup page. 
 
