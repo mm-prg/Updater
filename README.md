@@ -1,7 +1,7 @@
 # Updater Plugin Manager for FM-DX Webserver
 
 The **Updater Plugin Manager** is now a complete plugin management tool designed for the [FM-DX Webserver](https://github.com/NoobishSVK/fm-dx-webserver). 
-It provides a web interface to: 1) monitor and easily update the plugins you installed, automatically checking and downloading new versions; 2) view a list of all known plugins and install them (or add a new one, just providing the URL of its GitHub repository). 
+It provides a web interface to: 1) monitor and easily update the plugins you installed, automatically checking and downloading new versions (or previous ones); 2) view a list of all known plugins and install them (or add a new one, just providing the URL of its GitHub repository); 3) Add an extra plugins bar, just below the server description. Useful if you have a lot of plugins! 
 
 From the same interface you may also enable / disable a plugin and also restart the server. 
 
@@ -11,18 +11,23 @@ You don't need to use the terminal anymore, as you can do everything you need fr
 
 - The Discord plugin page is: https://discord.com/channels/1053804249651359765/1506667363859173468/1506667363859173468
 
-<img width="2392" height="1237" alt="image" src="https://github.com/user-attachments/assets/f5bc1bf5-0ac5-4210-a879-fb8896a080e3" />
+<img width="2474" height="1450" alt="image" src="https://github.com/user-attachments/assets/72937fd2-bce4-47c9-92db-60e7a8e01d0e" />
 
 ## Features
 
+- **Installed Plugins Overview**: A sortable table showing all installed plugins, current versions, authors, and real-time status.
 - **Install a new plugin selecting it from the list of all known plugins**: A list of all known plugins has been collected, with a description of each plugin.
 - **Automated Version Checking**: Automatically scans GitHub to detect if newer versions of your installed plugins are available.
 - **One-Click Updates**: Download and install the latest versions of plugins, including recursive updates for associated folders and subdirectories.
-- **Easy Plugin Configuration**: Directly view and modify the plugin configuration (and the the server configuration, too) with the internal editor.  
-- **More Plugin Discovery**: Add unknown plugins by simply providing a GitHub repository URL. Updater auto-detects the descriptor files and the required folder structures.
-- **Installed Plugins Overview**: A sortable table showing all installed plugins, current versions, authors, and real-time status.
+- **Download previous versions**- Download and install previous versions of plugins. 
+- **Easy Plugin Configuration**: Directly view and modify the plugin configuration files with the internal editor.  
+- **Add an unlisted plugin**: Add unknown plugins by simply providing a GitHub repository URL. Updater auto-detects the descriptor files and the required folder structures.
 - **Source Code Viewer**: Inspect local plugin descriptor files directly from the web interface.
-- **Update Check**: Remembers and displays the specific files that were modified or added during the last update process. 
+- **Downloaded files check**: Remembers and displays the specific files that were modified or added during the last update process. 
+- **View and modify Fm-Dx-Webserver configuration**. View and edit the Fm-Dx-Webserver configuration file.
+- **View and modify Fm-Dx-Webserver configuration**. View and edit the Fm-Dx-Webserver configuration file.
+- **View server log or Node.js cache**. View the log (server side) to check that everything's going well. The log (client side) is as always available from your browser dev tools (Click F12).
+- **Execute terminal commands**. If you know what you're doing, you may even execute some terminal commands.
 - **Extra Plugins Bar**: Displays an extra plugin bar, just below the server description. Useful when you have a lot of plugins!
 
 ## First installation
